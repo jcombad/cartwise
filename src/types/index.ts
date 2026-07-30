@@ -5,16 +5,53 @@ export type MeasurementUnit =
   | "ml"
   | "unit";
 
+export type ComparisonUnit = "kg" | "l" | "unit";
+
+export interface BaseProduct {
+  id: number;
+
+  /**
+   * Conceito de produto usado para agrupar e comparar
+   * produtos comerciais equivalentes.
+   *
+   * Exemplos:
+   * - Esparguete
+   * - Leite Meio Gordo
+   * - Papel Higiénico
+   */
+  name: string;
+
+  category?: string;
+
+  /**
+   * Unidade usada na comparação de preços:
+   * €/kg, €/L ou €/un.
+   */
+  comparisonUnit: ComparisonUnit;
+}
+
 export interface Product {
   id: number;
+
+  /**
+   * Produto base ao qual este produto comercial pertence.
+   */
+  baseProductId: number;
+
+  /**
+   * Nome do produto comercial concreto.
+   *
+   * Exemplos:
+   * - Esparguete Continente
+   * - Esparguete Combino
+   * - Leite Meio Gordo Mimosa
+   */
   name: string;
+
   brand?: string;
-  category?: string;
 
   packageQuantity: number;
   packageUnit: MeasurementUnit;
-
-  comparisonUnit: "kg" | "l" | "unit";
 }
 
 export interface Store {

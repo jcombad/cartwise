@@ -14,28 +14,37 @@ import {
   DrawerTitle,
 } from "../components/ui/drawer";
 
+import { mockBaseProducts } from "../data/mockBaseProducts";
 import { mockPriceRecords } from "../data/mockPriceRecords";
 import { mockProducts } from "../data/mockProducts";
 import { mockStores } from "../data/mockStores";
 
 import type {
+  BaseProduct,
+  ComparisonUnit,
   MeasurementUnit,
   PriceRecord,
   Product,
 } from "../types";
 
-const PRODUCTS_STORAGE_KEY = "cartwise-products";
-const PRICE_RECORDS_STORAGE_KEY = "cartwise-price-records";
+/*
+ * Usamos novas chaves para não carregar os dados antigos,
+ * que ainda não tinham baseProductId.
+ */
+const BASE_PRODUCTS_STORAGE_KEY = "cartwise-v2-base-products";
+const PRODUCTS_STORAGE_KEY = "cartwise-v2-products";
+const PRICE_RECORDS_STORAGE_KEY = "cartwise-v2-price-records";
 const LAST_STORE_STORAGE_KEY = "cartwise-last-store";
 
 type ProductFormData = {
-  name: string;
+  baseProductName: string;
+  commercialName: string;
+
   brand: string;
   category: string;
 
   packageQuantity: string;
   packageUnit: MeasurementUnit;
-  comparisonUnit: Product["comparisonUnit"];
 
   storeId: string;
 
@@ -49,6 +58,22 @@ function getTodayDate() {
   return new Date().toISOString().split("T")[0];
 }
 
+function getInitialBaseProducts(): BaseProduct[] {
+  const storedBaseProducts = localStorage.getItem(
+    BASE_PRODUCTS_STORAGE_KEY
+  );
+
+  if (!storedBaseProducts) {
+    return mockBaseProducts;
+  }
+
+  try {
+    return JSON.parse(storedBaseProducts) as BaseProduct[];
+  } catch {
+    return mockBaseProducts;
+  }
+}
+
 function getInitialProducts(): Product[] {
   const storedProducts = localStorage.getItem(
     PRODUCTS_STORAGE_KEY
@@ -59,7 +84,18 @@ function getInitialProducts(): Product[] {
   }
 
   try {
-    return JSON.parse(storedProducts) as Product[];
+    const parsedProducts = JSON.parse(
+      storedProducts
+    ) as Product[];
+
+    const hasValidStructure = parsedProducts.every(
+      (product) =>
+        typeof product.baseProductId === "number"
+    );
+
+    return hasValidStructure
+      ? parsedProducts
+      : mockProducts;
   } catch {
     return mockProducts;
   }
@@ -97,13 +133,14 @@ function getInitialStoreId() {
 
 function createInitialProductForm(): ProductFormData {
   return {
-    name: "",
+    baseProductName: "",
+    commercialName: "",
+
     brand: "",
     category: "",
 
     packageQuantity: "1",
     packageUnit: "unit",
-    comparisonUnit: "unit",
 
     storeId: getInitialStoreId(),
 
@@ -134,6 +171,23 @@ function formatPackageQuantity(
   };
 
   return `${quantity} ${unitLabels[unit]}`;
+}
+
+function getComparisonUnitFromPackageUnit(
+  packageUnit: MeasurementUnit
+): ComparisonUnit {
+  switch (packageUnit) {
+    case "kg":
+    case "g":
+      return "kg";
+
+    case "l":
+    case "ml":
+      return "l";
+
+    default:
+      return "unit";
+  }
 }
 
 function getNormalizedQuantity(product: Product) {
@@ -173,8 +227,10 @@ function getUnitPrice(
   );
 }
 
-function getComparisonUnitLabel(product: Product) {
-  switch (product.comparisonUnit) {
+function getComparisonUnitLabel(
+  baseProduct: BaseProduct
+) {
+  switch (baseProduct.comparisonUnit) {
     case "kg":
       return "kg";
 
@@ -191,7 +247,9 @@ function getLatestPriceRecord(
   priceRecords: PriceRecord[]
 ) {
   const productPriceRecords = priceRecords
-    .filter((record) => record.productId === productId)
+    .filter(
+      (record) => record.productId === productId
+    )
     .sort(
       (firstRecord, secondRecord) =>
         new Date(secondRecord.date).getTime() -
@@ -201,7 +259,15 @@ function getLatestPriceRecord(
   return productPriceRecords[0];
 }
 
+function normalizeText(value: string) {
+  return value.trim().toLocaleLowerCase("pt-PT");
+}
+
 export default function Products() {
+  const [baseProducts, setBaseProducts] = useState<
+    BaseProduct[]
+  >(getInitialBaseProducts);
+
   const [products, setProducts] =
     useState<Product[]>(getInitialProducts);
 
@@ -223,6 +289,13 @@ export default function Products() {
 
   useEffect(() => {
     localStorage.setItem(
+      BASE_PRODUCTS_STORAGE_KEY,
+      JSON.stringify(baseProducts)
+    );
+  }, [baseProducts]);
+
+  useEffect(() => {
+    localStorage.setItem(
       PRODUCTS_STORAGE_KEY,
       JSON.stringify(products)
     );
@@ -236,28 +309,35 @@ export default function Products() {
   }, [priceRecords]);
 
   const filteredProducts = useMemo(() => {
-    const normalizedSearchTerm = searchTerm
-      .trim()
-      .toLowerCase();
+    const normalizedSearchTerm = normalizeText(
+      searchTerm
+    );
 
     if (!normalizedSearchTerm) {
       return products;
     }
 
     return products.filter((product) => {
+      const baseProduct = baseProducts.find(
+        (item) => item.id === product.baseProductId
+      );
+
       const searchableValues = [
         product.name,
         product.brand,
-        product.category,
+        baseProduct?.name,
+        baseProduct?.category,
       ];
 
       return searchableValues.some((value) =>
         value
-          ?.toLowerCase()
-          .includes(normalizedSearchTerm)
+          ? normalizeText(value).includes(
+              normalizedSearchTerm
+            )
+          : false
       );
     });
-  }, [searchTerm, products]);
+  }, [searchTerm, products, baseProducts]);
 
   function resetProductForm() {
     setProductForm(createInitialProductForm());
@@ -270,33 +350,6 @@ export default function Products() {
     if (!open) {
       resetProductForm();
     }
-  }
-
-  function handlePackageUnitChange(
-    packageUnit: MeasurementUnit
-  ) {
-    let comparisonUnit: Product["comparisonUnit"];
-
-    switch (packageUnit) {
-      case "kg":
-      case "g":
-        comparisonUnit = "kg";
-        break;
-
-      case "l":
-      case "ml":
-        comparisonUnit = "l";
-        break;
-
-      default:
-        comparisonUnit = "unit";
-    }
-
-    setProductForm((currentForm) => ({
-      ...currentForm,
-      packageUnit,
-      comparisonUnit,
-    }));
   }
 
   function handlePromotionChange(checked: boolean) {
@@ -314,7 +367,14 @@ export default function Products() {
   ) {
     event.preventDefault();
 
-    const name = productForm.name.trim();
+    const baseProductName =
+      productForm.baseProductName.trim();
+
+    const commercialName =
+      productForm.commercialName.trim();
+
+    const brand = productForm.brand.trim();
+    const category = productForm.category.trim();
 
     const packageQuantity = Number(
       productForm.packageQuantity.replace(",", ".")
@@ -324,20 +384,19 @@ export default function Products() {
       productForm.regularPrice.replace(",", ".")
     );
 
-    const promotionalPrice =
-      productForm.promotion
-        ? Number(
-            productForm.promotionalPrice.replace(
-              ",",
-              "."
-            )
+    const promotionalPrice = productForm.promotion
+      ? Number(
+          productForm.promotionalPrice.replace(
+            ",",
+            "."
           )
-        : undefined;
+        )
+      : undefined;
 
     const storeId = Number(productForm.storeId);
 
     if (
-      !name ||
+      !baseProductName ||
       packageQuantity <= 0 ||
       regularPrice <= 0 ||
       !storeId
@@ -359,6 +418,38 @@ export default function Products() {
       return;
     }
 
+    const existingBaseProduct = baseProducts.find(
+      (baseProduct) =>
+        normalizeText(baseProduct.name) ===
+        normalizeText(baseProductName)
+    );
+
+    let baseProductId: number;
+    let newBaseProduct: BaseProduct | undefined;
+
+    if (existingBaseProduct) {
+      baseProductId = existingBaseProduct.id;
+    } else {
+      baseProductId =
+        baseProducts.length > 0
+          ? Math.max(
+              ...baseProducts.map(
+                (baseProduct) => baseProduct.id
+              )
+            ) + 1
+          : 1;
+
+      newBaseProduct = {
+        id: baseProductId,
+        name: baseProductName,
+        category: category || undefined,
+        comparisonUnit:
+          getComparisonUnitFromPackageUnit(
+            productForm.packageUnit
+          ),
+      };
+    }
+
     const nextProductId =
       products.length > 0
         ? Math.max(
@@ -375,16 +466,23 @@ export default function Products() {
           ) + 1
         : 1;
 
+    const generatedCommercialName = [
+      baseProductName,
+      brand,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
     const newProduct: Product = {
       id: nextProductId,
-      name,
-      brand: productForm.brand.trim() || undefined,
-      category:
-        productForm.category.trim() || undefined,
+      baseProductId,
+      name:
+        commercialName ||
+        generatedCommercialName ||
+        baseProductName,
+      brand: brand || undefined,
       packageQuantity,
       packageUnit: productForm.packageUnit,
-      comparisonUnit:
-        productForm.comparisonUnit,
     };
 
     const newPriceRecord: PriceRecord = {
@@ -396,6 +494,13 @@ export default function Products() {
       date: getTodayDate(),
       promotion: productForm.promotion,
     };
+
+    if (newBaseProduct) {
+      setBaseProducts((currentBaseProducts) => [
+        ...currentBaseProducts,
+        newBaseProduct,
+      ]);
+    }
 
     setProducts((currentProducts) => [
       ...currentProducts,
@@ -424,7 +529,8 @@ export default function Products() {
         </h1>
 
         <p className="text-sm text-slate-500">
-          Consulta os teus produtos e os respetivos preços.
+          Consulta os produtos comerciais e os respetivos
+          preços.
         </p>
       </header>
 
@@ -450,7 +556,7 @@ export default function Products() {
 
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-slate-900">
-          Os meus produtos
+          Produtos registados
         </h2>
 
         <span className="text-sm text-slate-500">
@@ -475,6 +581,11 @@ export default function Products() {
       ) : (
         <div className="space-y-3">
           {filteredProducts.map((product) => {
+            const baseProduct = baseProducts.find(
+              (item) =>
+                item.id === product.baseProductId
+            );
+
             const latestPriceRecord =
               getLatestPriceRecord(
                 product.id,
@@ -488,10 +599,9 @@ export default function Products() {
                 )
               : undefined;
 
-            const effectivePrice =
-              latestPriceRecord
-                ? getEffectivePrice(latestPriceRecord)
-                : null;
+            const effectivePrice = latestPriceRecord
+              ? getEffectivePrice(latestPriceRecord)
+              : null;
 
             const unitPrice = latestPriceRecord
               ? getUnitPrice(
@@ -507,7 +617,12 @@ export default function Products() {
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-slate-900">
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
+                      {baseProduct?.name ??
+                        "Produto base desconhecido"}
+                    </p>
+
+                    <h3 className="mt-1 font-semibold text-slate-900">
                       {product.name}
                     </h3>
 
@@ -523,9 +638,9 @@ export default function Products() {
                         .join(" · ")}
                     </p>
 
-                    {product.category && (
+                    {baseProduct?.category && (
                       <span className="mt-3 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                        {product.category}
+                        {baseProduct.category}
                       </span>
                     )}
                   </div>
@@ -534,7 +649,8 @@ export default function Products() {
                   effectivePrice !== null ? (
                     <div className="shrink-0 text-right">
                       {latestPriceRecord.promotion &&
-                        latestPriceRecord.promotionalPrice && (
+                        latestPriceRecord.promotionalPrice !==
+                          undefined && (
                           <p className="text-xs text-slate-400 line-through">
                             {formatCurrency(
                               latestPriceRecord.regularPrice
@@ -546,12 +662,15 @@ export default function Products() {
                         {formatCurrency(effectivePrice)}
                       </p>
 
-                      {unitPrice !== null && (
-                        <p className="text-xs text-slate-500">
-                          {formatCurrency(unitPrice)}/
-                          {getComparisonUnitLabel(product)}
-                        </p>
-                      )}
+                      {unitPrice !== null &&
+                        baseProduct && (
+                          <p className="text-xs text-slate-500">
+                            {formatCurrency(unitPrice)}/
+                            {getComparisonUnitLabel(
+                              baseProduct
+                            )}
+                          </p>
+                        )}
                     </div>
                   ) : (
                     <span className="shrink-0 text-xs text-slate-400">
@@ -585,7 +704,9 @@ export default function Products() {
                     </div>
 
                     <time dateTime={latestPriceRecord.date}>
-                      {new Intl.DateTimeFormat("pt-PT").format(
+                      {new Intl.DateTimeFormat(
+                        "pt-PT"
+                      ).format(
                         new Date(
                           `${latestPriceRecord.date}T00:00:00`
                         )
@@ -614,36 +735,84 @@ export default function Products() {
               </DrawerTitle>
 
               <DrawerDescription>
-                Regista o produto e o preço numa única ação.
+                Regista o produto comercial e o respetivo
+                preço.
               </DrawerDescription>
             </DrawerHeader>
 
             <div className="space-y-4 overflow-y-auto px-4 pb-4">
               <div className="space-y-1.5">
                 <label
-                  htmlFor="product-name"
+                  htmlFor="base-product-name"
                   className="text-sm font-medium text-slate-700"
                 >
-                  Produto
+                  Produto para comparar
                 </label>
 
                 <input
-                  id="product-name"
+                  id="base-product-name"
                   type="text"
+                  list="base-product-options"
                   required
                   autoFocus
-                  value={productForm.name}
+                  value={productForm.baseProductName}
                   onChange={(event) =>
                     setProductForm(
                       (currentForm) => ({
                         ...currentForm,
-                        name: event.target.value,
+                        baseProductName:
+                          event.target.value,
                       })
                     )
                   }
-                  placeholder="Ex.: Papel higiénico Renova"
+                  placeholder="Ex.: Esparguete"
                   className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
                 />
+
+                <datalist id="base-product-options">
+                  {baseProducts.map((baseProduct) => (
+                    <option
+                      key={baseProduct.id}
+                      value={baseProduct.name}
+                    />
+                  ))}
+                </datalist>
+
+                <p className="text-xs text-slate-500">
+                  Seleciona um produto existente ou escreve
+                  um novo.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label
+                  htmlFor="commercial-name"
+                  className="text-sm font-medium text-slate-700"
+                >
+                  Nome comercial
+                </label>
+
+                <input
+                  id="commercial-name"
+                  type="text"
+                  value={productForm.commercialName}
+                  onChange={(event) =>
+                    setProductForm(
+                      (currentForm) => ({
+                        ...currentForm,
+                        commercialName:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="Ex.: Esparguete Continente"
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
+                />
+
+                <p className="text-xs text-slate-500">
+                  É opcional. Se ficar vazio, será gerado
+                  automaticamente.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -755,9 +924,13 @@ export default function Products() {
                     id="package-unit"
                     value={productForm.packageUnit}
                     onChange={(event) =>
-                      handlePackageUnitChange(
-                        event.target
-                          .value as MeasurementUnit
+                      setProductForm(
+                        (currentForm) => ({
+                          ...currentForm,
+                          packageUnit:
+                            event.target
+                              .value as MeasurementUnit,
+                        })
                       )
                     }
                     className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
@@ -880,7 +1053,7 @@ export default function Products() {
                           })
                         )
                       }
-                      placeholder="Ex.: Renova"
+                      placeholder="Ex.: Continente"
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
                     />
                   </div>
@@ -906,9 +1079,14 @@ export default function Products() {
                           })
                         )
                       }
-                      placeholder="Ex.: Casa"
+                      placeholder="Ex.: Massas"
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
                     />
+
+                    <p className="text-xs text-slate-500">
+                      Só será utilizada ao criar um produto
+                      base novo.
+                    </p>
                   </div>
                 </div>
               )}
