@@ -2,17 +2,19 @@ import {
   useEffect,
   useMemo,
   useState,
-  type FormEvent,
 } from "react";
 
+import AddProductDrawer, {
+  type AddProductFormData,
+} from "../components/products/AddProductDrawer";
+
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "../components/ui/drawer";
+  createBaseProduct,
+  createPriceRecord,
+  createProduct,
+  getNextId,
+  normalizeText,
+} from "../lib/productHelpers";
 
 import { mockBaseProducts } from "../data/mockBaseProducts";
 import { mockPriceRecords } from "../data/mockPriceRecords";
@@ -21,7 +23,6 @@ import { mockStores } from "../data/mockStores";
 
 import type {
   BaseProduct,
-  ComparisonUnit,
   MeasurementUnit,
   PriceRecord,
   Product,
@@ -34,25 +35,6 @@ import type {
 const BASE_PRODUCTS_STORAGE_KEY = "cartwise-v2-base-products";
 const PRODUCTS_STORAGE_KEY = "cartwise-v2-products";
 const PRICE_RECORDS_STORAGE_KEY = "cartwise-v2-price-records";
-const LAST_STORE_STORAGE_KEY = "cartwise-last-store";
-
-type ProductFormData = {
-  baseProductName: string;
-  commercialName: string;
-
-  brand: string;
-  category: string;
-
-  packageQuantity: string;
-  packageUnit: MeasurementUnit;
-
-  storeId: string;
-
-  regularPrice: string;
-
-  promotion: boolean;
-  promotionalPrice: string;
-};
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
@@ -119,37 +101,6 @@ function getInitialPriceRecords(): PriceRecord[] {
   }
 }
 
-function getInitialStoreId() {
-  const storedStoreId = localStorage.getItem(
-    LAST_STORE_STORAGE_KEY
-  );
-
-  if (storedStoreId) {
-    return storedStoreId;
-  }
-
-  return mockStores[0]?.id.toString() ?? "";
-}
-
-function createInitialProductForm(): ProductFormData {
-  return {
-    baseProductName: "",
-    commercialName: "",
-
-    brand: "",
-    category: "",
-
-    packageQuantity: "1",
-    packageUnit: "unit",
-
-    storeId: getInitialStoreId(),
-
-    regularPrice: "",
-
-    promotion: false,
-    promotionalPrice: "",
-  };
-}
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-PT", {
@@ -171,23 +122,6 @@ function formatPackageQuantity(
   };
 
   return `${quantity} ${unitLabels[unit]}`;
-}
-
-function getComparisonUnitFromPackageUnit(
-  packageUnit: MeasurementUnit
-): ComparisonUnit {
-  switch (packageUnit) {
-    case "kg":
-    case "g":
-      return "kg";
-
-    case "l":
-    case "ml":
-      return "l";
-
-    default:
-      return "unit";
-  }
 }
 
 function getNormalizedQuantity(product: Product) {
@@ -259,10 +193,6 @@ function getLatestPriceRecord(
   return productPriceRecords[0];
 }
 
-function normalizeText(value: string) {
-  return value.trim().toLocaleLowerCase("pt-PT");
-}
-
 export default function Products() {
   const [baseProducts, setBaseProducts] = useState<
     BaseProduct[]
@@ -278,14 +208,6 @@ export default function Products() {
 
   const [isAddProductOpen, setIsAddProductOpen] =
     useState(false);
-
-  const [showMoreDetails, setShowMoreDetails] =
-    useState(false);
-
-  const [productForm, setProductForm] =
-    useState<ProductFormData>(
-      createInitialProductForm
-    );
 
   useEffect(() => {
     localStorage.setItem(
@@ -339,187 +261,124 @@ export default function Products() {
     });
   }, [searchTerm, products, baseProducts]);
 
-  function resetProductForm() {
-    setProductForm(createInitialProductForm());
-    setShowMoreDetails(false);
-  }
+function handleAddProduct(
+  productForm: AddProductFormData
+): boolean {
+  const baseProductName =
+    productForm.baseProductName.trim();
 
-  function handleDrawerOpenChange(open: boolean) {
-    setIsAddProductOpen(open);
+  const commercialName =
+    productForm.commercialName.trim();
 
-    if (!open) {
-      resetProductForm();
-    }
-  }
+  const brand = productForm.brand.trim();
+  const category = productForm.category.trim();
 
-  function handlePromotionChange(checked: boolean) {
-    setProductForm((currentForm) => ({
-      ...currentForm,
-      promotion: checked,
-      promotionalPrice: checked
-        ? currentForm.promotionalPrice
-        : "",
-    }));
-  }
+  const packageQuantity = Number(
+    productForm.packageQuantity.replace(",", ".")
+  );
 
-  function handleAddProduct(
-    event: FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
+  const regularPrice = Number(
+    productForm.regularPrice.replace(",", ".")
+  );
 
-    const baseProductName =
-      productForm.baseProductName.trim();
-
-    const commercialName =
-      productForm.commercialName.trim();
-
-    const brand = productForm.brand.trim();
-    const category = productForm.category.trim();
-
-    const packageQuantity = Number(
-      productForm.packageQuantity.replace(",", ".")
-    );
-
-    const regularPrice = Number(
-      productForm.regularPrice.replace(",", ".")
-    );
-
-    const promotionalPrice = productForm.promotion
-      ? Number(
-          productForm.promotionalPrice.replace(
-            ",",
-            "."
-          )
+  const promotionalPrice = productForm.promotion
+    ? Number(
+        productForm.promotionalPrice.replace(
+          ",",
+          "."
         )
-      : undefined;
+      )
+    : undefined;
 
-    const storeId = Number(productForm.storeId);
+  const storeId = Number(productForm.storeId);
 
-    if (
-      !baseProductName ||
-      packageQuantity <= 0 ||
-      regularPrice <= 0 ||
-      !storeId
-    ) {
-      return;
-    }
-
-    if (
-      productForm.promotion &&
-      (!promotionalPrice || promotionalPrice <= 0)
-    ) {
-      return;
-    }
-
-    if (
-      promotionalPrice &&
-      promotionalPrice >= regularPrice
-    ) {
-      return;
-    }
-
-    const existingBaseProduct = baseProducts.find(
-      (baseProduct) =>
-        normalizeText(baseProduct.name) ===
-        normalizeText(baseProductName)
-    );
-
-    let baseProductId: number;
-    let newBaseProduct: BaseProduct | undefined;
-
-    if (existingBaseProduct) {
-      baseProductId = existingBaseProduct.id;
-    } else {
-      baseProductId =
-        baseProducts.length > 0
-          ? Math.max(
-              ...baseProducts.map(
-                (baseProduct) => baseProduct.id
-              )
-            ) + 1
-          : 1;
-
-      newBaseProduct = {
-        id: baseProductId,
-        name: baseProductName,
-        category: category || undefined,
-        comparisonUnit:
-          getComparisonUnitFromPackageUnit(
-            productForm.packageUnit
-          ),
-      };
-    }
-
-    const nextProductId =
-      products.length > 0
-        ? Math.max(
-            ...products.map((product) => product.id)
-          ) + 1
-        : 1;
-
-    const nextPriceRecordId =
-      priceRecords.length > 0
-        ? Math.max(
-            ...priceRecords.map(
-              (priceRecord) => priceRecord.id
-            )
-          ) + 1
-        : 1;
-
-    const generatedCommercialName = [
-      baseProductName,
-      brand,
-    ]
-      .filter(Boolean)
-      .join(" ");
-
-    const newProduct: Product = {
-      id: nextProductId,
-      baseProductId,
-      name:
-        commercialName ||
-        generatedCommercialName ||
-        baseProductName,
-      brand: brand || undefined,
-      packageQuantity,
-      packageUnit: productForm.packageUnit,
-    };
-
-    const newPriceRecord: PriceRecord = {
-      id: nextPriceRecordId,
-      productId: nextProductId,
-      storeId,
-      regularPrice,
-      promotionalPrice,
-      date: getTodayDate(),
-      promotion: productForm.promotion,
-    };
-
-    if (newBaseProduct) {
-      setBaseProducts((currentBaseProducts) => [
-        ...currentBaseProducts,
-        newBaseProduct,
-      ]);
-    }
-
-    setProducts((currentProducts) => [
-      ...currentProducts,
-      newProduct,
-    ]);
-
-    setPriceRecords((currentPriceRecords) => [
-      ...currentPriceRecords,
-      newPriceRecord,
-    ]);
-
-    localStorage.setItem(
-      LAST_STORE_STORAGE_KEY,
-      productForm.storeId
-    );
-
-    setIsAddProductOpen(false);
-    resetProductForm();
+  if (
+    !baseProductName ||
+    !Number.isFinite(packageQuantity) ||
+    packageQuantity <= 0 ||
+    !Number.isFinite(regularPrice) ||
+    regularPrice <= 0 ||
+    !storeId
+  ) {
+    return false;
   }
+
+  if (
+    productForm.promotion &&
+    (!promotionalPrice ||
+      !Number.isFinite(promotionalPrice) ||
+      promotionalPrice <= 0)
+  ) {
+    return false;
+  }
+
+  if (
+    promotionalPrice !== undefined &&
+    promotionalPrice >= regularPrice
+  ) {
+    return false;
+  }
+
+  const existingBaseProduct = baseProducts.find(
+    (baseProduct) =>
+      normalizeText(baseProduct.name) ===
+      normalizeText(baseProductName)
+  );
+
+  let baseProductId: number;
+
+  if (existingBaseProduct) {
+    baseProductId = existingBaseProduct.id;
+  } else {
+    baseProductId = getNextId(baseProducts);
+
+    const newBaseProduct = createBaseProduct({
+      id: baseProductId,
+      name: baseProductName,
+      category,
+      packageUnit: productForm.packageUnit,
+    });
+
+    setBaseProducts((currentBaseProducts) => [
+      ...currentBaseProducts,
+      newBaseProduct,
+    ]);
+  }
+
+  const productId = getNextId(products);
+
+  const newProduct = createProduct({
+    id: productId,
+    baseProductId,
+    baseProductName,
+    commercialName,
+    brand,
+    packageQuantity,
+    packageUnit: productForm.packageUnit,
+  });
+
+  const newPriceRecord = createPriceRecord({
+    id: getNextId(priceRecords),
+    productId,
+    storeId,
+    regularPrice,
+    promotionalPrice,
+    promotion: productForm.promotion,
+    date: getTodayDate(),
+  });
+
+  setProducts((currentProducts) => [
+    ...currentProducts,
+    newProduct,
+  ]);
+
+  setPriceRecords((currentPriceRecords) => [
+    ...currentPriceRecords,
+    newPriceRecord,
+  ]);
+
+  return true;
+}
 
   return (
     <div className="space-y-6">
@@ -720,399 +579,13 @@ export default function Products() {
         </div>
       )}
 
-      <Drawer
+      <AddProductDrawer
         open={isAddProductOpen}
-        onOpenChange={handleDrawerOpenChange}
-      >
-        <DrawerContent>
-          <form
-            onSubmit={handleAddProduct}
-            className="mx-auto flex max-h-[90vh] w-full max-w-lg flex-col"
-          >
-            <DrawerHeader className="text-left">
-              <DrawerTitle>
-                Adicionar produto
-              </DrawerTitle>
-
-              <DrawerDescription>
-                Regista o produto comercial e o respetivo
-                preço.
-              </DrawerDescription>
-            </DrawerHeader>
-
-            <div className="space-y-4 overflow-y-auto px-4 pb-4">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="base-product-name"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Produto para comparar
-                </label>
-
-                <input
-                  id="base-product-name"
-                  type="text"
-                  list="base-product-options"
-                  required
-                  autoFocus
-                  value={productForm.baseProductName}
-                  onChange={(event) =>
-                    setProductForm(
-                      (currentForm) => ({
-                        ...currentForm,
-                        baseProductName:
-                          event.target.value,
-                      })
-                    )
-                  }
-                  placeholder="Ex.: Esparguete"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-                />
-
-                <datalist id="base-product-options">
-                  {baseProducts.map((baseProduct) => (
-                    <option
-                      key={baseProduct.id}
-                      value={baseProduct.name}
-                    />
-                  ))}
-                </datalist>
-
-                <p className="text-xs text-slate-500">
-                  Seleciona um produto existente ou escreve
-                  um novo.
-                </p>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="commercial-name"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Nome comercial
-                </label>
-
-                <input
-                  id="commercial-name"
-                  type="text"
-                  value={productForm.commercialName}
-                  onChange={(event) =>
-                    setProductForm(
-                      (currentForm) => ({
-                        ...currentForm,
-                        commercialName:
-                          event.target.value,
-                      })
-                    )
-                  }
-                  placeholder="Ex.: Esparguete Continente"
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-                />
-
-                <p className="text-xs text-slate-500">
-                  É opcional. Se ficar vazio, será gerado
-                  automaticamente.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="regular-price"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Preço normal
-                  </label>
-
-                  <div className="relative">
-                    <input
-                      id="regular-price"
-                      type="text"
-                      inputMode="decimal"
-                      required
-                      value={productForm.regularPrice}
-                      onChange={(event) =>
-                        setProductForm(
-                          (currentForm) => ({
-                            ...currentForm,
-                            regularPrice:
-                              event.target.value,
-                          })
-                        )
-                      }
-                      placeholder="0,00"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
-                    />
-
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                      €
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="store"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Supermercado
-                  </label>
-
-                  <select
-                    id="store"
-                    required
-                    value={productForm.storeId}
-                    onChange={(event) =>
-                      setProductForm(
-                        (currentForm) => ({
-                          ...currentForm,
-                          storeId: event.target.value,
-                        })
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
-                  >
-                    {mockStores.map((store) => (
-                      <option
-                        key={store.id}
-                        value={store.id}
-                      >
-                        {store.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="package-quantity"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Quantidade
-                  </label>
-
-                  <input
-                    id="package-quantity"
-                    type="text"
-                    inputMode="decimal"
-                    required
-                    value={productForm.packageQuantity}
-                    onChange={(event) =>
-                      setProductForm(
-                        (currentForm) => ({
-                          ...currentForm,
-                          packageQuantity:
-                            event.target.value,
-                        })
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="package-unit"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Unidade
-                  </label>
-
-                  <select
-                    id="package-unit"
-                    value={productForm.packageUnit}
-                    onChange={(event) =>
-                      setProductForm(
-                        (currentForm) => ({
-                          ...currentForm,
-                          packageUnit:
-                            event.target
-                              .value as MeasurementUnit,
-                        })
-                      )
-                    }
-                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
-                  >
-                    <option value="unit">
-                      Unidades
-                    </option>
-                    <option value="g">Gramas</option>
-                    <option value="kg">
-                      Quilogramas
-                    </option>
-                    <option value="ml">
-                      Mililitros
-                    </option>
-                    <option value="l">Litros</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 p-3">
-                <label className="flex cursor-pointer items-center justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">
-                      Em promoção
-                    </p>
-
-                    <p className="text-xs text-slate-500">
-                      Adicionar um preço promocional.
-                    </p>
-                  </div>
-
-                  <input
-                    type="checkbox"
-                    checked={productForm.promotion}
-                    onChange={(event) =>
-                      handlePromotionChange(
-                        event.target.checked
-                      )
-                    }
-                    className="peer sr-only"
-                  />
-
-                  <span className="relative h-6 w-11 shrink-0 rounded-full bg-slate-200 transition peer-checked:bg-slate-900">
-                    <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-                  </span>
-                </label>
-
-                {productForm.promotion && (
-                  <div className="mt-4 space-y-1.5">
-                    <label
-                      htmlFor="promotional-price"
-                      className="text-sm font-medium text-slate-700"
-                    >
-                      Preço promocional
-                    </label>
-
-                    <div className="relative">
-                      <input
-                        id="promotional-price"
-                        type="text"
-                        inputMode="decimal"
-                        required
-                        value={
-                          productForm.promotionalPrice
-                        }
-                        onChange={(event) =>
-                          setProductForm(
-                            (currentForm) => ({
-                              ...currentForm,
-                              promotionalPrice:
-                                event.target.value,
-                            })
-                          )
-                        }
-                        placeholder="0,00"
-                        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
-                      />
-
-                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                        €
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setShowMoreDetails(
-                    (currentValue) => !currentValue
-                  )
-                }
-                className="text-sm font-medium text-slate-600"
-              >
-                {showMoreDetails
-                  ? "Ocultar detalhes"
-                  : "Mais detalhes"}
-              </button>
-
-              {showMoreDetails && (
-                <div className="space-y-4 rounded-xl bg-slate-50 p-4">
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="product-brand"
-                      className="text-sm font-medium text-slate-700"
-                    >
-                      Marca
-                    </label>
-
-                    <input
-                      id="product-brand"
-                      type="text"
-                      value={productForm.brand}
-                      onChange={(event) =>
-                        setProductForm(
-                          (currentForm) => ({
-                            ...currentForm,
-                            brand: event.target.value,
-                          })
-                        )
-                      }
-                      placeholder="Ex.: Continente"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label
-                      htmlFor="product-category"
-                      className="text-sm font-medium text-slate-700"
-                    >
-                      Categoria
-                    </label>
-
-                    <input
-                      id="product-category"
-                      type="text"
-                      value={productForm.category}
-                      onChange={(event) =>
-                        setProductForm(
-                          (currentForm) => ({
-                            ...currentForm,
-                            category:
-                              event.target.value,
-                          })
-                        )
-                      }
-                      placeholder="Ex.: Massas"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-                    />
-
-                    <p className="text-xs text-slate-500">
-                      Só será utilizada ao criar um produto
-                      base novo.
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <DrawerFooter className="border-t border-slate-100 bg-white">
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-              >
-                Guardar produto e preço
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  handleDrawerOpenChange(false)
-                }
-                className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-              >
-                Cancelar
-              </button>
-            </DrawerFooter>
-          </form>
-        </DrawerContent>
-      </Drawer>
+        baseProducts={baseProducts}
+        products={products}
+        onOpenChange={setIsAddProductOpen}
+        onSubmit={handleAddProduct}
+      />
     </div>
   );
 }
