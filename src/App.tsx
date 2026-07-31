@@ -3,6 +3,8 @@ import { Routes, Route } from "react-router-dom";
 
 import { MainLayout } from "@/components/layout/MainLayout";
 
+import { Toaster } from "@/components/ui/sonner";
+
 import Dashboard from "@/pages/Dashboard";
 import Products from "@/pages/Products";
 import ShoppingLists from "@/pages/ShoppingLists";
@@ -76,6 +78,7 @@ function App() {
   }
 
   return (
+    <>
     <Routes>
       <Route element={<MainLayout />}>
         <Route
@@ -121,6 +124,12 @@ function App() {
         />
       </Route>
     </Routes>
+
+     <Toaster
+      position="top-center"
+      richColors
+    />
+    </>
   );
 }
 

@@ -5,7 +5,9 @@ import {
 } from "react";
 
 import AddProductDrawer, {
+  type AddPriceFormData,
   type AddProductFormData,
+  type AddProductResult,
 } from "../components/products/AddProductDrawer";
 
 import {
@@ -180,17 +182,21 @@ function getLatestPriceRecord(
   productId: number,
   priceRecords: PriceRecord[]
 ) {
-  const productPriceRecords = priceRecords
+  return priceRecords
     .filter(
       (record) => record.productId === productId
     )
-    .sort(
-      (firstRecord, secondRecord) =>
+    .sort((firstRecord, secondRecord) => {
+      const dateDifference =
         new Date(secondRecord.date).getTime() -
-        new Date(firstRecord.date).getTime()
-    );
+        new Date(firstRecord.date).getTime();
 
-  return productPriceRecords[0];
+      if (dateDifference !== 0) {
+        return dateDifference;
+      }
+
+      return secondRecord.id - firstRecord.id;
+    })[0];
 }
 
 export default function Products() {
@@ -263,7 +269,7 @@ export default function Products() {
 
 function handleAddProduct(
   productForm: AddProductFormData
-): boolean {
+): AddProductResult {
   const baseProductName =
     productForm.baseProductName.trim();
 
@@ -300,11 +306,181 @@ function handleAddProduct(
     regularPrice <= 0 ||
     !storeId
   ) {
-    return false;
+    return {
+  success: false,
+};
   }
 
   if (
     productForm.promotion &&
+    (!promotionalPrice ||
+      !Number.isFinite(promotionalPrice) ||
+      promotionalPrice <= 0)
+  ) {
+    return {
+  success: false,
+};
+  }
+
+  if (
+    promotionalPrice !== undefined &&
+    promotionalPrice >= regularPrice
+  ) {
+    return {
+  success: false,
+};
+  }
+
+  const existingBaseProduct = baseProducts.find(
+    (baseProduct) =>
+      normalizeText(baseProduct.name) ===
+      normalizeText(baseProductName)
+  );
+
+  let baseProductId: number;
+  let newBaseProduct:
+    | ReturnType<typeof createBaseProduct>
+    | undefined;
+
+  if (existingBaseProduct) {
+    baseProductId = existingBaseProduct.id;
+  } else {
+    baseProductId = getNextId(baseProducts);
+
+    newBaseProduct = createBaseProduct({
+      id: baseProductId,
+      name: baseProductName,
+      category,
+      packageUnit: productForm.packageUnit,
+    });
+  }
+
+  const candidateProduct = createProduct({
+    id: getNextId(products),
+    baseProductId,
+    baseProductName,
+    commercialName,
+    brand,
+    packageQuantity,
+    packageUnit: productForm.packageUnit,
+  });
+
+  const candidateBrand = normalizeText(
+  candidateProduct.brand ?? ""
+);
+
+const existingCommercialProduct = products.find(
+  (product) => {
+    const existingBrand = normalizeText(
+      product.brand ?? ""
+    );
+
+    const brandsAreCompatible =
+      !candidateBrand ||
+      !existingBrand ||
+      candidateBrand === existingBrand;
+
+    return (
+      product.baseProductId === baseProductId &&
+      normalizeText(product.name) ===
+        normalizeText(candidateProduct.name) &&
+      Math.abs(
+        product.packageQuantity -
+          candidateProduct.packageQuantity
+      ) < 0.000001 &&
+      product.packageUnit ===
+        candidateProduct.packageUnit &&
+      brandsAreCompatible
+    );
+  }
+);
+
+  const productId =
+    existingCommercialProduct?.id ??
+    candidateProduct.id;
+
+  const newPriceRecord = createPriceRecord({
+    id: getNextId(priceRecords),
+    productId,
+    storeId,
+    regularPrice,
+    promotionalPrice,
+    promotion: productForm.promotion,
+    date: getTodayDate(),
+  });
+
+  /*
+   * Só criamos o Produto Base quando ainda não existia
+   * e não foi encontrado um produto comercial equivalente.
+   */
+  if (newBaseProduct) {
+    setBaseProducts((currentBaseProducts) => [
+      ...currentBaseProducts,
+      newBaseProduct,
+    ]);
+  }
+
+  /*
+   * Se o produto comercial já existir, não o duplicamos.
+   * Apenas será criado o novo registo de preço.
+   */
+  if (!existingCommercialProduct) {
+    setProducts((currentProducts) => [
+      ...currentProducts,
+      candidateProduct,
+    ]);
+  }
+
+  setPriceRecords((currentPriceRecords) => [
+    ...currentPriceRecords,
+    newPriceRecord,
+  ]);
+
+  return {
+  success: true,
+  action: existingCommercialProduct
+    ? "added-price"
+    : "created-product",
+  productName: existingCommercialProduct
+    ? existingCommercialProduct.name
+    : candidateProduct.name,
+};
+}
+
+function handleAddPrice(
+  priceForm: AddPriceFormData
+): boolean {
+  const regularPrice = Number(
+    priceForm.regularPrice.replace(",", ".")
+  );
+
+  const promotionalPrice = priceForm.promotion
+    ? Number(
+        priceForm.promotionalPrice.replace(
+          ",",
+          "."
+        )
+      )
+    : undefined;
+
+  const storeId = Number(priceForm.storeId);
+
+  const productExists = products.some(
+    (product) =>
+      product.id === priceForm.productId
+  );
+
+  if (
+    !productExists ||
+    !storeId ||
+    !Number.isFinite(regularPrice) ||
+    regularPrice <= 0
+  ) {
+    return false;
+  }
+
+  if (
+    priceForm.promotion &&
     (!promotionalPrice ||
       !Number.isFinite(promotionalPrice) ||
       promotionalPrice <= 0)
@@ -319,58 +495,15 @@ function handleAddProduct(
     return false;
   }
 
-  const existingBaseProduct = baseProducts.find(
-    (baseProduct) =>
-      normalizeText(baseProduct.name) ===
-      normalizeText(baseProductName)
-  );
-
-  let baseProductId: number;
-
-  if (existingBaseProduct) {
-    baseProductId = existingBaseProduct.id;
-  } else {
-    baseProductId = getNextId(baseProducts);
-
-    const newBaseProduct = createBaseProduct({
-      id: baseProductId,
-      name: baseProductName,
-      category,
-      packageUnit: productForm.packageUnit,
-    });
-
-    setBaseProducts((currentBaseProducts) => [
-      ...currentBaseProducts,
-      newBaseProduct,
-    ]);
-  }
-
-  const productId = getNextId(products);
-
-  const newProduct = createProduct({
-    id: productId,
-    baseProductId,
-    baseProductName,
-    commercialName,
-    brand,
-    packageQuantity,
-    packageUnit: productForm.packageUnit,
-  });
-
   const newPriceRecord = createPriceRecord({
     id: getNextId(priceRecords),
-    productId,
+    productId: priceForm.productId,
     storeId,
     regularPrice,
     promotionalPrice,
-    promotion: productForm.promotion,
+    promotion: priceForm.promotion,
     date: getTodayDate(),
   });
-
-  setProducts((currentProducts) => [
-    ...currentProducts,
-    newProduct,
-  ]);
 
   setPriceRecords((currentPriceRecords) => [
     ...currentPriceRecords,
@@ -583,8 +716,10 @@ function handleAddProduct(
         open={isAddProductOpen}
         baseProducts={baseProducts}
         products={products}
+        priceRecords={priceRecords}
         onOpenChange={setIsAddProductOpen}
         onSubmit={handleAddProduct}
+        onAddPrice={handleAddPrice}
       />
     </div>
   );
