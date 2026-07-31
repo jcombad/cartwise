@@ -127,6 +127,9 @@ export default function ShoppingLists({
   }).format(estimatedTotal);
 
   function handleToggleProduct(productId: number) {
+      if (!selectedShoppingList) {
+    return;
+  }
     onToggleProduct(
       selectedShoppingList.id,
       productId
@@ -134,6 +137,9 @@ export default function ShoppingLists({
   }
 
   function handleBackToDashboard() {
+     if (!selectedShoppingList) {
+    return;
+  }
     navigate(
       `/?store=${selectedShoppingList.id}`
     );

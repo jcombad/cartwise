@@ -425,7 +425,18 @@ function handleAddPriceSubmit(
     >
       <DrawerContent>
        {step === "select-base-product" && (
-  <div className="mx-auto flex max-h-[85vh] w-full max-w-lg flex-col">
+  <div className="
+    mx-auto
+    max-h-[92dvh]
+    w-[calc(100%-1rem)]
+    max-w-md
+    overflow-hidden
+    rounded-t-[28px]
+    border
+    border-border
+    bg-background
+    shadow-2xl
+  ">
     <DrawerHeader className="text-left">
       <DrawerTitle>
         O que queres registar?
