@@ -1,20 +1,32 @@
 import {
+  useEffect,
   useMemo,
   useState,
 } from "react";
 
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "../ui/drawer";
+  ChevronLeft,
+  Plus,
+  Tag,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { AppButton } from "../forms/AppButton";
+import { AppInput } from "../forms/AppInput";
+import { AppSelect } from "../forms/AppSelect";
+import { AppSwitch } from "../forms/AppSwitch";
+
+import {
+  MobileFullScreenSheet,
+  MobileFullScreenSheetBody,
+  MobileFullScreenSheetContent,
+  MobileFullScreenSheetDescription,
+  MobileFullScreenSheetFooter,
+  MobileFullScreenSheetHeader,
+  MobileFullScreenSheetTitle,
+} from "../layout/MobileFullScreenSheet";
 
 import { mockStores } from "../../data/mockStores";
-
-import { toast } from "sonner";
 
 import type {
   BaseProduct,
@@ -23,7 +35,8 @@ import type {
   Product,
 } from "../../types";
 
-const LAST_STORE_STORAGE_KEY = "cartwise-last-store";
+const LAST_STORE_STORAGE_KEY =
+  "cartwise-last-store";
 
 type AddProductStep =
   | "select-base-product"
@@ -72,15 +85,15 @@ type AddProductDrawerProps = {
   baseProducts: BaseProduct[];
   products: Product[];
   priceRecords: PriceRecord[];
+  initialProductId?: number | null;
   onOpenChange: (open: boolean) => void;
-  /**
-   * Deve devolver true quando o registo for guardado.
-   * Se devolver false, o formulário permanece aberto.
-   */
+  onBackFromInitialProduct?: () => void;
   onSubmit: (
-  formData: AddProductFormData
-) => AddProductResult;
-  onAddPrice: (formData: AddPriceFormData) => boolean;
+    formData: AddProductFormData
+  ) => AddProductResult;
+  onAddPrice: (
+    formData: AddPriceFormData
+  ) => boolean;
 };
 
 function getInitialStoreId() {
@@ -123,7 +136,22 @@ function formatDate(date: string) {
   );
 }
 
-function getEffectivePrice(priceRecord: PriceRecord) {
+function formatPackage(product: Product) {
+  const unitLabel =
+    product.packageUnit === "unit"
+      ? product.packageQuantity === 1
+        ? "unidade"
+        : "unidades"
+      : product.packageUnit === "l"
+        ? "L"
+        : product.packageUnit;
+
+  return `${product.packageQuantity} ${unitLabel}`;
+}
+
+function getEffectivePrice(
+  priceRecord: PriceRecord
+) {
   return (
     priceRecord.promotionalPrice ??
     priceRecord.regularPrice
@@ -152,12 +180,29 @@ function getLatestPriceRecord(
     })[0];
 }
 
+function getComparisonUnitLabel(
+  baseProduct: BaseProduct
+) {
+  switch (baseProduct.comparisonUnit) {
+    case "kg":
+      return "€/kg";
+
+    case "l":
+      return "€/L";
+
+    case "unit":
+      return "€/un.";
+  }
+}
+
 export default function AddProductDrawer({
   open,
   baseProducts,
   products,
   priceRecords,
+  initialProductId,
   onOpenChange,
+  onBackFromInitialProduct,
   onSubmit,
   onAddPrice,
 }: AddProductDrawerProps) {
@@ -169,78 +214,139 @@ export default function AddProductDrawer({
   const [showMoreDetails, setShowMoreDetails] =
     useState(false);
 
-  /*
-   * Estes estados vão ser utilizados no próximo passo,
-   * quando transformarmos o Drawer num fluxo por etapas.
-   *
-   * Neste momento, apenas precisamos das funções que
-   * permitem repor os estados quando o Drawer fecha.
-   */
-const [step, setStep] =
-  useState<AddProductStep>("select-base-product");
+  const [step, setStep] =
+    useState<AddProductStep>(
+      "select-base-product"
+    );
 
-const [
-  selectedBaseProductId,
-  setSelectedBaseProductId,
-] = useState<number | null>(null);
+  const [
+    selectedBaseProductId,
+    setSelectedBaseProductId,
+  ] = useState<number | null>(null);
 
-const [
-  selectedProductId,
-  setSelectedProductId,
-] = useState<number | null>(null);
+  const [
+    selectedProductId,
+    setSelectedProductId,
+  ] = useState<number | null>(null);
 
-const [baseProductSearch, setBaseProductSearch] =
-  useState("");
+  const [
+    baseProductSearch,
+    setBaseProductSearch,
+  ] = useState("");
 
-const filteredBaseProducts = useMemo(() => {
-  const normalizedSearch = baseProductSearch
-    .trim()
-    .toLocaleLowerCase("pt-PT");
+  const filteredBaseProducts = useMemo(() => {
+    const normalizedSearch =
+      baseProductSearch
+        .trim()
+        .toLocaleLowerCase("pt-PT");
 
-  if (!normalizedSearch) {
-    return baseProducts;
+    if (!normalizedSearch) {
+      return baseProducts;
+    }
+
+    return baseProducts.filter((baseProduct) =>
+      baseProduct.name
+        .toLocaleLowerCase("pt-PT")
+        .includes(normalizedSearch)
+    );
+  }, [baseProductSearch, baseProducts]);
+
+  const exactBaseProductMatch =
+    baseProducts.find(
+      (baseProduct) =>
+        baseProduct.name.toLocaleLowerCase(
+          "pt-PT"
+        ) ===
+        baseProductSearch
+          .trim()
+          .toLocaleLowerCase("pt-PT")
+    );
+
+  const selectedBaseProduct =
+    baseProducts.find(
+      (baseProduct) =>
+        baseProduct.id === selectedBaseProductId
+    );
+
+  const selectedBaseProductProducts =
+    products.filter(
+      (product) =>
+        product.baseProductId ===
+        selectedBaseProductId
+    );
+
+  const selectedProduct = products.find(
+    (product) =>
+      product.id === selectedProductId
+  );
+
+useEffect(() => {
+  if (!open || initialProductId == null) {
+    return;
   }
 
-  return baseProducts.filter((baseProduct) =>
-    baseProduct.name
-      .toLocaleLowerCase("pt-PT")
-      .includes(normalizedSearch)
+  const initialProduct = products.find(
+    (product) =>
+      product.id === initialProductId
   );
-}, [baseProductSearch, baseProducts]);
 
-const exactBaseProductMatch = baseProducts.find(
-  (baseProduct) =>
-    baseProduct.name.toLocaleLowerCase("pt-PT") ===
-    baseProductSearch
-      .trim()
-      .toLocaleLowerCase("pt-PT")
-);
+  if (!initialProduct) {
+    return;
+  }
 
-const selectedBaseProduct = baseProducts.find(
-  (baseProduct) =>
-    baseProduct.id === selectedBaseProductId
-);
+  const initialBaseProduct = baseProducts.find(
+    (baseProduct) =>
+      baseProduct.id ===
+      initialProduct.baseProductId
+  );
 
-const selectedBaseProductProducts = products.filter(
-  (product) =>
-    product.baseProductId === selectedBaseProductId
-);
+  const latestPriceRecord =
+    getLatestPriceRecord(
+      initialProduct.id,
+      priceRecords
+    );
 
-const selectedProduct = products.find(
-  (product) => product.id === selectedProductId
-);
+  setSelectedBaseProductId(
+    initialProduct.baseProductId
+  );
+
+  setSelectedProductId(initialProduct.id);
+
+  setFormData((currentForm) => ({
+    ...currentForm,
+    baseProductName:
+      initialBaseProduct?.name ?? "",
+    category:
+      initialBaseProduct?.category ?? "",
+    storeId:
+      latestPriceRecord?.storeId.toString() ??
+      currentForm.storeId,
+    regularPrice: "",
+    promotionalPrice: "",
+    promotion: false,
+  }));
+
+  setStep("add-price");
+}, [
+  open,
+  initialProductId,
+  products,
+  baseProducts,
+  priceRecords,
+]);
 
   function resetForm() {
-      setFormData(createInitialFormData());
-      setShowMoreDetails(false);
-
-      setStep("select-base-product");
-      setSelectedBaseProductId(null);
-      setSelectedProductId(null);
-      setBaseProductSearch("");
+    setFormData(createInitialFormData());
+    setShowMoreDetails(false);
+    setStep("select-base-product");
+    setSelectedBaseProductId(null);
+    setSelectedProductId(null);
+    setBaseProductSearch("");
   }
 
-  function handleOpenChange(nextOpen: boolean) {
+  function handleOpenChange(
+    nextOpen: boolean
+  ) {
     onOpenChange(nextOpen);
 
     if (!nextOpen) {
@@ -249,89 +355,131 @@ const selectedProduct = products.find(
   }
 
   function handleSelectBaseProduct(
-  baseProduct: BaseProduct
-) {
-  setSelectedBaseProductId(baseProduct.id);
+    baseProduct: BaseProduct
+  ) {
+    setSelectedBaseProductId(
+      baseProduct.id
+    );
 
-  setFormData((currentForm) => ({
-    ...currentForm,
-    baseProductName: baseProduct.name,
-    category: baseProduct.category ?? "",
-  }));
+    setFormData((currentForm) => ({
+      ...currentForm,
+      baseProductName: baseProduct.name,
+      category:
+        baseProduct.category ?? "",
+    }));
 
-  /*
-   * Temporariamente segue diretamente para o formulário
-   * atual. No próximo passo mostraremos primeiro os
-   * produtos comerciais existentes.
-   */
-  setStep("select-product");
-}
-
-function handleCreateBaseProduct() {
-  const baseProductName = baseProductSearch.trim();
-
-  if (!baseProductName) {
-    return;
+    setStep("select-product");
   }
 
-  setSelectedBaseProductId(null);
+  function handleCreateBaseProduct() {
+    const baseProductName =
+      baseProductSearch.trim();
+
+    if (!baseProductName) {
+      return;
+    }
+
+    setSelectedBaseProductId(null);
+
+    setFormData((currentForm) => ({
+      ...currentForm,
+      baseProductName,
+      category: "",
+    }));
+
+    setStep("create-product");
+  }
+
+function handleSelectProduct(
+  product: Product
+) {
+  const latestPriceRecord =
+    getLatestPriceRecord(
+      product.id,
+      priceRecords
+    );
+
+  setSelectedProductId(product.id);
 
   setFormData((currentForm) => ({
     ...currentForm,
-    baseProductName,
-    category: "",
+    storeId:
+      latestPriceRecord?.storeId.toString() ??
+      currentForm.storeId,
+    regularPrice: "",
+    promotionalPrice: "",
+    promotion: false,
   }));
 
-  setStep("create-product");
-}
-
-function handleSelectProduct(product: Product) {
-  setSelectedProductId(product.id);
-
-  /*
-   * No próximo passo, esta seleção abrirá o formulário
-   * rápido para registar apenas um novo preço.
-   */
   setStep("add-price");
 }
 
-function handleCreateCommercialProduct() {
-  if (!selectedBaseProduct) {
+  function handleCreateCommercialProduct() {
+    if (!selectedBaseProduct) {
+      return;
+    }
+
+    setSelectedProductId(null);
+
+    setFormData((currentForm) => ({
+      ...currentForm,
+      baseProductName:
+        selectedBaseProduct.name,
+      category:
+        selectedBaseProduct.category ?? "",
+      commercialName: "",
+      brand: "",
+      packageQuantity: "1",
+      packageUnit:
+        selectedBaseProduct.comparisonUnit ===
+        "kg"
+          ? "g"
+          : selectedBaseProduct.comparisonUnit ===
+              "l"
+            ? "l"
+            : "unit",
+      regularPrice: "",
+      promotionalPrice: "",
+      promotion: false,
+    }));
+
+    setStep("create-product");
+  }
+
+  function handleBackToProductSelection() {
+    setSelectedProductId(null);
+
+    setFormData((currentForm) => ({
+      ...currentForm,
+      regularPrice: "",
+      promotionalPrice: "",
+      promotion: false,
+    }));
+
+    setStep("select-product");
+  }
+
+  function handleBackFromAddPrice() {
+  if (
+    initialProductId != null &&
+    onBackFromInitialProduct
+  ) {
+    onBackFromInitialProduct();
     return;
   }
 
-  setSelectedProductId(null);
-
-  setFormData((currentForm) => ({
-    ...currentForm,
-    baseProductName: selectedBaseProduct.name,
-    category: selectedBaseProduct.category ?? "",
-    commercialName: "",
-    brand: "",
-    packageQuantity: "1",
-    packageUnit:
-      selectedBaseProduct.comparisonUnit === "kg"
-        ? "g"
-        : selectedBaseProduct.comparisonUnit === "l"
-          ? "l"
-          : "unit",
-  }));
-
-  setStep("create-product");
+  handleBackToProductSelection();
 }
 
-function handleBackToProductSelection() {
-  setSelectedProductId(null);
-  setStep("select-product");
-}
+  function handleBackToBaseProductSearch() {
+    setStep("select-base-product");
+    setSelectedBaseProductId(null);
+    setSelectedProductId(null);
+  }
 
-function handleBackToBaseProductSearch() {
-  setStep("select-base-product");
-  setSelectedBaseProductId(null);
-  setSelectedProductId(null);
-}
-
-  function handlePromotionChange(checked: boolean) {
+  function handlePromotionChange(
+    checked: boolean
+  ) {
     setFormData((currentForm) => ({
       ...currentForm,
       promotion: checked,
@@ -341,722 +489,669 @@ function handleBackToBaseProductSearch() {
     }));
   }
 
-function handleSubmit(
-  event: React.FormEvent<HTMLFormElement>
-) {
-  event.preventDefault();
+  function handleSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
 
-  const result = onSubmit(formData);
+    const result = onSubmit(formData);
 
-  if (!result.success) {
-    toast.error("Não foi possível guardar", {
-      description:
-        "Confirma os dados introduzidos e tenta novamente.",
-    });
+    if (!result.success) {
+      toast.error(
+        "Não foi possível guardar",
+        {
+          description:
+            "Confirma os dados introduzidos e tenta novamente.",
+        }
+      );
 
-    return;
-  }
+      return;
+    }
 
-  if (result.action === "added-price") {
-    toast.success("Preço atualizado", {
-      description: `Foi adicionado um novo preço a "${result.productName}".`,
-    });
-  } else {
-    toast.success("Produto adicionado", {
-      description: `"${result.productName}" foi criado com o primeiro preço.`,
-    });
-  }
+    if (result.action === "added-price") {
+      toast.success("Preço atualizado", {
+        description: `Foi adicionado um novo preço a “${result.productName}”.`,
+      });
+    } else {
+      toast.success("Produto adicionado", {
+        description: `“${result.productName}” foi criado com o primeiro preço.`,
+      });
+    }
 
-  localStorage.setItem(
-    LAST_STORE_STORAGE_KEY,
-    formData.storeId
-  );
-
-  onOpenChange(false);
-  resetForm();
-}
-
-function handleAddPriceSubmit(
-  event: React.FormEvent<HTMLFormElement>
-) {
-  event.preventDefault();
-
-  if (!selectedProductId) {
-    return;
-  }
-
-  const wasSaved = onAddPrice({
-    productId: selectedProductId,
-    storeId: formData.storeId,
-    regularPrice: formData.regularPrice,
-    promotion: formData.promotion,
-    promotionalPrice: formData.promotionalPrice,
-  });
-
-  if (!wasSaved) {
-    toast.error(
-      "Não foi possível guardar o preço",
-      {
-        description:
-          "Confirma os valores introduzidos e tenta novamente.",
-      }
+    localStorage.setItem(
+      LAST_STORE_STORAGE_KEY,
+      formData.storeId
     );
 
-    return;
+    onOpenChange(false);
+    resetForm();
   }
 
-  toast.success("Preço adicionado", {
-    description: `Foi guardado um novo preço para "${selectedProduct?.name ?? "o produto"}".`,
-  });
+  function handleAddPriceSubmit(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
 
-  localStorage.setItem(
-    LAST_STORE_STORAGE_KEY,
-    formData.storeId
-  );
+    if (!selectedProductId) {
+      return;
+    }
 
-  onOpenChange(false);
-  resetForm();
-}
+    const wasSaved = onAddPrice({
+      productId: selectedProductId,
+      storeId: formData.storeId,
+      regularPrice: formData.regularPrice,
+      promotion: formData.promotion,
+      promotionalPrice:
+        formData.promotionalPrice,
+    });
+
+    if (!wasSaved) {
+      toast.error(
+        "Não foi possível guardar o preço",
+        {
+          description:
+            "Confirma os valores introduzidos e tenta novamente.",
+        }
+      );
+
+      return;
+    }
+
+    toast.success("Preço adicionado", {
+      description: `Foi guardado um novo preço para “${selectedProduct?.name ?? "o produto"}”.`,
+    });
+
+    localStorage.setItem(
+      LAST_STORE_STORAGE_KEY,
+      formData.storeId
+    );
+
+    onOpenChange(false);
+    resetForm();
+  }
 
   return (
-    <Drawer
+    <MobileFullScreenSheet
       open={open}
       onOpenChange={handleOpenChange}
     >
-      <DrawerContent>
-       {step === "select-base-product" && (
-  <div className="
-    mx-auto
-    max-h-[92dvh]
-    w-[calc(100%-1rem)]
-    max-w-md
-    overflow-hidden
-    rounded-t-[28px]
-    border
-    border-border
-    bg-background
-    shadow-2xl
-  ">
-    <DrawerHeader className="text-left">
-      <DrawerTitle>
-        O que queres registar?
-      </DrawerTitle>
-
-      <DrawerDescription>
-        Procura primeiro o tipo de produto que queres
-        comparar.
-      </DrawerDescription>
-    </DrawerHeader>
-
-    <div className="space-y-4 overflow-y-auto px-4 pb-6">
-      <div className="space-y-1.5">
-        <label
-          htmlFor="base-product-search"
-          className="text-sm font-medium text-slate-700"
-        >
-          Procurar produto
-        </label>
-
-        <input
-          id="base-product-search"
-          type="search"
-          autoFocus
-          value={baseProductSearch}
-          onChange={(event) =>
-            setBaseProductSearch(event.target.value)
-          }
-          placeholder="Ex.: Esparguete"
-          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Produtos para comparar
-        </p>
-
-        {filteredBaseProducts.length > 0 ? (
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {filteredBaseProducts.map(
-              (baseProduct, index) => (
-                <button
-                  key={baseProduct.id}
-                  type="button"
-                  onClick={() =>
-                    handleSelectBaseProduct(
-                      baseProduct
-                    )
-                  }
-                  className={`
-                    flex
-                    w-full
-                    items-center
-                    justify-between
-                    gap-4
-                    px-4
-                    py-4
-                    text-left
-                    transition
-                    hover:bg-slate-50
-                    active:bg-slate-100
-                    ${
-                      index !==
-                      filteredBaseProducts.length - 1
-                        ? "border-b border-slate-100"
-                        : ""
-                    }
-                  `}
-                >
-                  <div className="min-w-0">
-                    <p className="font-medium text-slate-900">
-                      {baseProduct.name}
-                    </p>
-
-                    {baseProduct.category && (
-                      <p className="mt-0.5 text-sm text-slate-500">
-                        {baseProduct.category}
-                      </p>
-                    )}
-                  </div>
-
-                  <span className="shrink-0 text-sm text-slate-400">
-                    {baseProduct.comparisonUnit ===
-                    "unit"
-                      ? "€/un."
-                      : baseProduct.comparisonUnit ===
-                          "l"
-                        ? "€/L"
-                        : "€/kg"}
-                  </span>
-                </button>
-              )
-            )}
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-center">
-            <p className="text-sm font-medium text-slate-900">
-              Nenhum produto encontrado
-            </p>
-
-            <p className="mt-1 text-xs text-slate-500">
-              Podes criar um novo produto para comparação.
-            </p>
-          </div>
-        )}
-
-        {baseProductSearch.trim() &&
-          !exactBaseProductMatch && (
-            <button
-              type="button"
-              onClick={handleCreateBaseProduct}
-              className="flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:bg-slate-100"
-            >
-              Criar “{baseProductSearch.trim()}”
-            </button>
-          )}
-      </div>
-    </div>
-  </div>
-)}
-
-{step === "select-product" && selectedBaseProduct && (
-  <div className="mx-auto flex max-h-[85vh] w-full max-w-lg flex-col">
-    <DrawerHeader className="text-left">
-      <button
-        type="button"
-        onClick={handleBackToBaseProductSearch}
-        className="mb-2 w-fit text-sm font-medium text-slate-500"
-      >
-        ← Voltar
-      </button>
-
-      <DrawerTitle>
-        {selectedBaseProduct.name}
-      </DrawerTitle>
-
-      <DrawerDescription>
-        Seleciona o produto concreto cujo preço queres
-        registar.
-      </DrawerDescription>
-    </DrawerHeader>
-
-    <div className="space-y-4 overflow-y-auto px-4 pb-6">
-      {selectedBaseProductProducts.length > 0 ? (
-        <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-            Produtos existentes
-          </p>
-
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            {selectedBaseProductProducts.map(
-  (product, index) => {
-    const latestPriceRecord =
-      getLatestPriceRecord(
-        product.id,
-        priceRecords
-      );
-
-    const store = latestPriceRecord
-      ? mockStores.find(
-          (item) =>
-            item.id === latestPriceRecord.storeId
-        )
-      : undefined;
-
-    const effectivePrice = latestPriceRecord
-      ? getEffectivePrice(latestPriceRecord)
-      : null;
-
-    return (
-      <button
-        key={product.id}
-        type="button"
-        onClick={() =>
-          handleSelectProduct(product)
+      <MobileFullScreenSheetContent
+        onClose={() =>
+          handleOpenChange(false)
         }
-        className={`
-          flex
-          w-full
-          items-center
-          justify-between
-          gap-4
-          px-4
-          py-4
-          text-left
-          transition
-          hover:bg-slate-50
-          active:bg-slate-100
-          ${
-            index !==
-            selectedBaseProductProducts.length - 1
-              ? "border-b border-slate-100"
-              : ""
-          }
-        `}
       >
-        <div className="min-w-0">
-          <p className="font-medium text-slate-900">
-            {product.name}
-          </p>
+        {step === "select-base-product" && (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <MobileFullScreenSheetHeader>
+              <MobileFullScreenSheetTitle>
+                O que queres registar?
+              </MobileFullScreenSheetTitle>
 
-          <p className="mt-1 text-sm text-slate-500">
-            {product.brand
-              ? `${product.brand} · `
-              : ""}
+              <MobileFullScreenSheetDescription>
+                Procura primeiro o tipo de produto
+                que queres comparar.
+              </MobileFullScreenSheetDescription>
+            </MobileFullScreenSheetHeader>
 
-            {product.packageQuantity}{" "}
-            {product.packageUnit === "unit"
-              ? product.packageQuantity === 1
-                ? "unidade"
-                : "unidades"
-              : product.packageUnit === "l"
-                ? "L"
-                : product.packageUnit}
-          </p>
-
-          {latestPriceRecord && (
-            <p className="mt-2 text-xs text-slate-500">
-              {store?.name ??
-                "Supermercado desconhecido"}{" "}
-              · {formatDate(latestPriceRecord.date)}
-            </p>
-          )}
-        </div>
-
-        <div className="shrink-0 text-right">
-          {latestPriceRecord &&
-          effectivePrice !== null ? (
-            <>
-              {latestPriceRecord.promotion &&
-                latestPriceRecord.promotionalPrice !==
-                  undefined && (
-                  <p className="text-xs text-slate-400 line-through">
-                    {formatCurrency(
-                      latestPriceRecord.regularPrice
-                    )}
-                  </p>
-                )}
-
-              <p className="font-semibold text-slate-900">
-                {formatCurrency(effectivePrice)}
-              </p>
-
-              {latestPriceRecord.promotion && (
-                <p className="mt-1 text-[11px] font-medium text-amber-600">
-                  Promoção
-                </p>
-              )}
-            </>
-          ) : (
-            <span className="text-xs text-slate-400">
-              Sem preços
-            </span>
-          )}
-        </div>
-      </button>
-    );
-  }
-)}
-          </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-center">
-          <p className="text-sm font-medium text-slate-900">
-            Ainda não existem produtos comerciais
-          </p>
-
-          <p className="mt-1 text-xs text-slate-500">
-            Cria a primeira versão comercial deste produto.
-          </p>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={handleCreateCommercialProduct}
-        className="flex w-full items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 active:bg-slate-100"
-      >
-        + Criar novo produto comercial
-      </button>
-    </div>
-  </div>
-)}
-
-{step === "add-price" && selectedProduct && (
-  <form
-    onSubmit={handleAddPriceSubmit}
-    className="mx-auto flex max-h-[85vh] w-full max-w-lg flex-col"
-  >
-    <DrawerHeader className="text-left">
-      <button
-        type="button"
-        onClick={handleBackToProductSelection}
-        className="mb-2 w-fit text-sm font-medium text-slate-500"
-      >
-        ← Voltar
-      </button>
-
-      <DrawerTitle>
-        Registar novo preço
-      </DrawerTitle>
-
-      <DrawerDescription>
-        {selectedProduct.name}
-      </DrawerDescription>
-    </DrawerHeader>
-
-    <div className="space-y-4 overflow-y-auto px-4 pb-4">
-      <div className="rounded-2xl bg-slate-50 p-4">
-        <p className="font-medium text-slate-900">
-          {selectedProduct.name}
-        </p>
-
-        <p className="mt-1 text-sm text-slate-500">
-          {selectedProduct.brand
-            ? `${selectedProduct.brand} · `
-            : ""}
-          {selectedProduct.packageQuantity}{" "}
-          {selectedProduct.packageUnit === "unit"
-            ? selectedProduct.packageQuantity === 1
-              ? "unidade"
-              : "unidades"
-            : selectedProduct.packageUnit === "l"
-              ? "L"
-              : selectedProduct.packageUnit}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label
-            htmlFor="new-regular-price"
-            className="text-sm font-medium text-slate-700"
-          >
-            Preço normal
-          </label>
-
-          <div className="relative">
-            <input
-              id="new-regular-price"
-              type="text"
-              inputMode="decimal"
-              required
-              autoFocus
-              value={formData.regularPrice}
-              onChange={(event) =>
-                setFormData((currentForm) => ({
-                  ...currentForm,
-                  regularPrice: event.target.value,
-                }))
-              }
-              placeholder="0,00"
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
-            />
-
-            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-              €
-            </span>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <label
-            htmlFor="new-price-store"
-            className="text-sm font-medium text-slate-700"
-          >
-            Supermercado
-          </label>
-
-          <select
-            id="new-price-store"
-            required
-            value={formData.storeId}
-            onChange={(event) =>
-              setFormData((currentForm) => ({
-                ...currentForm,
-                storeId: event.target.value,
-              }))
-            }
-            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
-          >
-            {mockStores.map((store) => (
-              <option
-                key={store.id}
-                value={store.id}
-              >
-                {store.name}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-slate-200 p-3">
-        <label className="flex cursor-pointer items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-medium text-slate-900">
-              Em promoção
-            </p>
-
-            <p className="text-xs text-slate-500">
-              Registar também o preço promocional.
-            </p>
-          </div>
-
-          <input
-            type="checkbox"
-            checked={formData.promotion}
-            onChange={(event) =>
-              handlePromotionChange(
-                event.target.checked
-              )
-            }
-            className="peer sr-only"
-          />
-
-          <span className="relative h-6 w-11 shrink-0 rounded-full bg-slate-200 transition peer-checked:bg-slate-900">
-            <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-          </span>
-        </label>
-
-        {formData.promotion && (
-          <div className="mt-4 space-y-1.5">
-            <label
-              htmlFor="new-promotional-price"
-              className="text-sm font-medium text-slate-700"
-            >
-              Preço promocional
-            </label>
-
-            <div className="relative">
-              <input
-                id="new-promotional-price"
-                type="text"
-                inputMode="decimal"
-                required
-                value={formData.promotionalPrice}
-                onChange={(event) =>
-                  setFormData((currentForm) => ({
-                    ...currentForm,
-                    promotionalPrice:
-                      event.target.value,
-                  }))
-                }
-                placeholder="0,00"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
-              />
-
-              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                €
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-
-    <DrawerFooter className="border-t border-slate-100 bg-white">
-      <button
-        type="submit"
-        className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-      >
-        Guardar novo preço
-      </button>
-
-      <button
-        type="button"
-        onClick={() => handleOpenChange(false)}
-        className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-      >
-        Cancelar
-      </button>
-    </DrawerFooter>
-  </form>
-)}
-     
-       {step === "create-product" && ( 
-        <form
-          onSubmit={handleSubmit}
-          className="mx-auto flex max-h-[90vh] w-full max-w-lg flex-col"
-        >
-          <DrawerHeader className="text-left">
-            <button
-  type="button"
-  onClick={handleBackToBaseProductSearch}
-  className="mb-2 w-fit text-sm font-medium text-slate-500"
->
-  ← Voltar
-</button>
-            <DrawerTitle>
-              Adicionar produto
-            </DrawerTitle>
-
-            <DrawerDescription>
-              Regista o produto comercial e o respetivo
-              preço.
-            </DrawerDescription>
-          </DrawerHeader>
-
-          <div className="space-y-4 overflow-y-auto px-4 pb-4">
-            <div className="space-y-1.5">
-              <label
-                htmlFor="base-product-name"
-                className="text-sm font-medium text-slate-700"
-              >
-                Produto para comparar
-              </label>
-
-              <input
-                id="base-product-name"
-                type="text"
-                list="base-product-options"
-                required
+            <MobileFullScreenSheetBody className="space-y-5">
+              <AppInput
+                id="base-product-search"
+                type="search"
                 autoFocus
-                value={formData.baseProductName}
+                label="Procurar produto"
+                value={baseProductSearch}
                 onChange={(event) =>
-                  setFormData((currentForm) => ({
-                    ...currentForm,
-                    baseProductName: event.target.value,
-                  }))
+                  setBaseProductSearch(
+                    event.target.value
+                  )
                 }
                 placeholder="Ex.: Esparguete"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
               />
 
-              <datalist id="base-product-options">
-                {baseProducts.map((baseProduct) => (
-                  <option
-                    key={baseProduct.id}
-                    value={baseProduct.name}
-                  />
-                ))}
-              </datalist>
+              <section className="space-y-2">
+                <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Produtos para comparar
+                </p>
 
-              <p className="text-xs text-slate-500">
-                Seleciona um produto existente ou escreve
-                um novo.
-              </p>
-            </div>
+                {filteredBaseProducts.length >
+                0 ? (
+                  <div className="overflow-hidden rounded-3xl border border-border bg-card">
+                    {filteredBaseProducts.map(
+                      (baseProduct, index) => (
+                        <button
+                          key={baseProduct.id}
+                          type="button"
+                          onClick={() =>
+                            handleSelectBaseProduct(
+                              baseProduct
+                            )
+                          }
+                          className={`
+                            flex
+                            min-h-16
+                            w-full
+                            items-center
+                            justify-between
+                            gap-4
+                            px-4
+                            py-3.5
+                            text-left
+                            transition-colors
+                            hover:bg-muted/70
+                            focus-visible:bg-muted/70
+                            focus-visible:outline-none
+                            active:bg-muted
+                            ${
+                              index !==
+                              filteredBaseProducts.length - 1
+                                ? "border-b border-border"
+                                : ""
+                            }
+                          `}
+                        >
+                          <div className="min-w-0">
+                            <p className="font-semibold text-card-foreground">
+                              {baseProduct.name}
+                            </p>
 
-            <div className="space-y-1.5">
-              <label
-                htmlFor="commercial-name"
-                className="text-sm font-medium text-slate-700"
-              >
-                Nome comercial
-              </label>
+                            {baseProduct.category && (
+                              <p className="mt-0.5 text-sm text-muted-foreground">
+                                {
+                                  baseProduct.category
+                                }
+                              </p>
+                            )}
+                          </div>
 
-              <input
-                id="commercial-name"
-                type="text"
-                value={formData.commercialName}
-                onChange={(event) =>
-                  setFormData((currentForm) => ({
-                    ...currentForm,
-                    commercialName: event.target.value,
-                  }))
-                }
-                placeholder="Ex.: Esparguete Continente"
-                className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
-              />
+                          <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            {getComparisonUnitLabel(
+                              baseProduct
+                            )}
+                          </span>
+                        </button>
+                      )
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-border bg-muted/30 p-6 text-center">
+                    <p className="font-medium text-foreground">
+                      Nenhum produto encontrado
+                    </p>
 
-              <p className="text-xs text-slate-500">
-                É opcional. Se ficar vazio, será gerado
-                automaticamente.
-              </p>
-            </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Podes criar um novo produto
+                      para comparação.
+                    </p>
+                  </div>
+                )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="regular-price"
-                  className="text-sm font-medium text-slate-700"
+                {baseProductSearch.trim() &&
+                  !exactBaseProductMatch && (
+                    <AppButton
+                      variant="secondary"
+                      icon={
+                        <Plus className="h-4 w-4" />
+                      }
+                      onClick={
+                        handleCreateBaseProduct
+                      }
+                    >
+                      Criar “
+                      {baseProductSearch.trim()}”
+                    </AppButton>
+                  )}
+              </section>
+            </MobileFullScreenSheetBody>
+          </div>
+        )}
+
+        {step === "select-product" &&
+          selectedBaseProduct && (
+            <div className="flex min-h-0 flex-1 flex-col">
+              <MobileFullScreenSheetHeader>
+                <AppButton
+                  variant="ghost"
+                  fullWidth={false}
+                  icon={
+                    <ChevronLeft className="h-4 w-4" />
+                  }
+                  onClick={
+                    handleBackToBaseProductSearch
+                  }
+                  className="-ml-3 mb-1 min-h-9 px-3 py-1.5 text-sm"
                 >
-                  Preço normal
-                </label>
+                  Voltar
+                </AppButton>
 
-                <div className="relative">
-                  <input
-                    id="regular-price"
+                <MobileFullScreenSheetTitle>
+                  {selectedBaseProduct.name}
+                </MobileFullScreenSheetTitle>
+
+                <MobileFullScreenSheetDescription>
+                  Seleciona o produto concreto
+                  cujo preço queres registar.
+                </MobileFullScreenSheetDescription>
+              </MobileFullScreenSheetHeader>
+
+              <MobileFullScreenSheetBody className="space-y-5">
+                {selectedBaseProductProducts.length >
+                0 ? (
+                  <section className="space-y-2">
+                    <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Produtos existentes
+                    </p>
+
+                    <div className="overflow-hidden rounded-3xl border border-border bg-card">
+                      {selectedBaseProductProducts.map(
+                        (product, index) => {
+                          const latestPriceRecord =
+                            getLatestPriceRecord(
+                              product.id,
+                              priceRecords
+                            );
+
+                          const store =
+                            latestPriceRecord
+                              ? mockStores.find(
+                                  (item) =>
+                                    item.id ===
+                                    latestPriceRecord.storeId
+                                )
+                              : undefined;
+
+                          const effectivePrice =
+                            latestPriceRecord
+                              ? getEffectivePrice(
+                                  latestPriceRecord
+                                )
+                              : null;
+
+                          return (
+                            <button
+                              key={product.id}
+                              type="button"
+                              onClick={() =>
+                                handleSelectProduct(
+                                  product
+                                )
+                              }
+                              className={`
+                                flex
+                                min-h-20
+                                w-full
+                                items-center
+                                justify-between
+                                gap-4
+                                px-4
+                                py-4
+                                text-left
+                                transition-colors
+                                hover:bg-muted/70
+                                focus-visible:bg-muted/70
+                                focus-visible:outline-none
+                                active:bg-muted
+                                ${
+                                  index !==
+                                  selectedBaseProductProducts.length - 1
+                                    ? "border-b border-border"
+                                    : ""
+                                }
+                              `}
+                            >
+                              <div className="min-w-0">
+                                <p className="font-semibold text-card-foreground">
+                                  {product.name}
+                                </p>
+
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  {product.brand
+                                    ? `${product.brand} · `
+                                    : ""}
+                                  {formatPackage(
+                                    product
+                                  )}
+                                </p>
+
+                                {latestPriceRecord && (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    {store?.name ??
+                                      "Supermercado desconhecido"}{" "}
+                                    ·{" "}
+                                    {formatDate(
+                                      latestPriceRecord.date
+                                    )}
+                                  </p>
+                                )}
+                              </div>
+
+                              <div className="shrink-0 text-right">
+                                {latestPriceRecord &&
+                                effectivePrice !==
+                                  null ? (
+                                  <>
+                                    {latestPriceRecord.promotion &&
+                                      latestPriceRecord.promotionalPrice !==
+                                        undefined && (
+                                        <p className="text-xs text-muted-foreground line-through">
+                                          {formatCurrency(
+                                            latestPriceRecord.regularPrice
+                                          )}
+                                        </p>
+                                      )}
+
+                                    <p className="font-bold text-card-foreground">
+                                      {formatCurrency(
+                                        effectivePrice
+                                      )}
+                                    </p>
+
+                                    {latestPriceRecord.promotion && (
+                                      <p className="mt-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                        Promoção
+                                      </p>
+                                    )}
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    Sem preços
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  </section>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-border bg-muted/30 p-6 text-center">
+                    <p className="font-medium text-foreground">
+                      Ainda não existem produtos
+                      comerciais
+                    </p>
+
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Cria a primeira versão
+                      comercial deste produto.
+                    </p>
+                  </div>
+                )}
+
+                <AppButton
+                  variant="secondary"
+                  icon={
+                    <Plus className="h-4 w-4" />
+                  }
+                  onClick={
+                    handleCreateCommercialProduct
+                  }
+                >
+                  Criar novo produto comercial
+                </AppButton>
+              </MobileFullScreenSheetBody>
+            </div>
+          )}
+
+        {step === "add-price" &&
+          selectedProduct && (
+            <form
+              onSubmit={handleAddPriceSubmit}
+              className="flex min-h-0 flex-1 flex-col"
+            >
+              <MobileFullScreenSheetHeader>
+                <AppButton
+                  variant="ghost"
+                  fullWidth={false}
+                  icon={
+                    <ChevronLeft className="h-4 w-4" />
+                  }
+                  onClick={handleBackFromAddPrice}
+                  className="-ml-3 mb-1 min-h-9 px-3 py-1.5 text-sm"
+                >
+                  Voltar
+                </AppButton>
+
+                <MobileFullScreenSheetTitle>
+                  Registar novo preço
+                </MobileFullScreenSheetTitle>
+
+                <MobileFullScreenSheetDescription>
+                  {selectedProduct.name}
+                </MobileFullScreenSheetDescription>
+              </MobileFullScreenSheetHeader>
+
+              <MobileFullScreenSheetBody className="space-y-5">
+                <div className="rounded-3xl border border-border bg-card p-4">
+                  <p className="font-semibold text-card-foreground">
+                    {selectedProduct.name}
+                  </p>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {selectedProduct.brand
+                      ? `${selectedProduct.brand} · `
+                      : ""}
+                    {formatPackage(
+                      selectedProduct
+                    )}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <AppInput
+                    id="new-regular-price"
+                    label="Preço normal"
                     type="text"
                     inputMode="decimal"
                     required
-                    value={formData.regularPrice}
+                    autoFocus
+                    value={
+                      formData.regularPrice
+                    }
                     onChange={(event) =>
-                      setFormData((currentForm) => ({
-                        ...currentForm,
-                        regularPrice: event.target.value,
-                      }))
+                      setFormData(
+                        (currentForm) => ({
+                          ...currentForm,
+                          regularPrice:
+                            event.target.value,
+                        })
+                      )
                     }
                     placeholder="0,00"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
+                    suffix="€"
                   />
 
-                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                    €
-                  </span>
+                  <AppSelect
+                    id="new-price-store"
+                    label="Supermercado"
+                    required
+                    value={formData.storeId}
+                    onChange={(event) =>
+                      setFormData(
+                        (currentForm) => ({
+                          ...currentForm,
+                          storeId:
+                            event.target.value,
+                        })
+                      )
+                    }
+                  >
+                    {mockStores.map((store) => (
+                      <option
+                        key={store.id}
+                        value={store.id}
+                      >
+                        {store.name}
+                      </option>
+                    ))}
+                  </AppSelect>
                 </div>
-              </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="store"
-                  className="text-sm font-medium text-slate-700"
+                <AppSwitch
+                  id="new-price-promotion"
+                  checked={formData.promotion}
+                  onCheckedChange={
+                    handlePromotionChange
+                  }
+                  label="Em promoção"
+                  description="Registar também o preço promocional."
+                  icon={
+                    <Tag className="h-5 w-5" />
+                  }
+                />
+
+                {formData.promotion && (
+                  <AppInput
+                    id="new-promotional-price"
+                    label="Preço promocional"
+                    type="text"
+                    inputMode="decimal"
+                    required
+                    value={
+                      formData.promotionalPrice
+                    }
+                    onChange={(event) =>
+                      setFormData(
+                        (currentForm) => ({
+                          ...currentForm,
+                          promotionalPrice:
+                            event.target.value,
+                        })
+                      )
+                    }
+                    placeholder="0,00"
+                    suffix="€"
+                  />
+                )}
+              </MobileFullScreenSheetBody>
+
+              <MobileFullScreenSheetFooter className="space-y-2">
+                <AppButton type="submit">
+                  Guardar novo preço
+                </AppButton>
+
+                <AppButton
+                  variant="ghost"
+                  onClick={() =>
+                    handleOpenChange(false)
+                  }
                 >
-                  Supermercado
-                </label>
+                  Cancelar
+                </AppButton>
+              </MobileFullScreenSheetFooter>
+            </form>
+          )}
 
-                <select
+        {step === "create-product" && (
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <MobileFullScreenSheetHeader>
+              <AppButton
+                variant="ghost"
+                fullWidth={false}
+                icon={
+                  <ChevronLeft className="h-4 w-4" />
+                }
+                onClick={
+                  selectedBaseProduct
+                    ? handleBackToProductSelection
+                    : handleBackToBaseProductSearch
+                }
+                className="-ml-3 mb-1 min-h-9 px-3 py-1.5 text-sm"
+              >
+                Voltar
+              </AppButton>
+
+              <MobileFullScreenSheetTitle>
+                Adicionar produto
+              </MobileFullScreenSheetTitle>
+
+              <MobileFullScreenSheetDescription>
+                Regista o produto comercial e o
+                respetivo primeiro preço.
+              </MobileFullScreenSheetDescription>
+            </MobileFullScreenSheetHeader>
+
+            <MobileFullScreenSheetBody className="space-y-5">
+              <AppInput
+                id="base-product-name"
+                label="Produto para comparar"
+                type="text"
+                required
+                value={
+                  formData.baseProductName
+                }
+                onChange={(event) =>
+                  setFormData(
+                    (currentForm) => ({
+                      ...currentForm,
+                      baseProductName:
+                        event.target.value,
+                    })
+                  )
+                }
+                placeholder="Ex.: Esparguete"
+                description="Agrupa produtos equivalentes de marcas ou supermercados diferentes."
+              />
+
+              <AppInput
+                id="commercial-name"
+                label="Nome comercial"
+                type="text"
+                value={
+                  formData.commercialName
+                }
+                onChange={(event) =>
+                  setFormData(
+                    (currentForm) => ({
+                      ...currentForm,
+                      commercialName:
+                        event.target.value,
+                    })
+                  )
+                }
+                placeholder="Ex.: Esparguete Continente"
+                description="Se ficar vazio, será gerado automaticamente."
+              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <AppInput
+                  id="regular-price"
+                  label="Preço normal"
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  value={
+                    formData.regularPrice
+                  }
+                  onChange={(event) =>
+                    setFormData(
+                      (currentForm) => ({
+                        ...currentForm,
+                        regularPrice:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="0,00"
+                  suffix="€"
+                />
+
+                <AppSelect
                   id="store"
+                  label="Supermercado"
                   required
                   value={formData.storeId}
                   onChange={(event) =>
-                    setFormData((currentForm) => ({
-                      ...currentForm,
-                      storeId: event.target.value,
-                    }))
+                    setFormData(
+                      (currentForm) => ({
+                        ...currentForm,
+                        storeId:
+                          event.target.value,
+                      })
+                    )
                   }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
                 >
                   {mockStores.map((store) => (
                     <option
@@ -1066,56 +1161,44 @@ function handleAddPriceSubmit(
                       {store.name}
                     </option>
                   ))}
-                </select>
+                </AppSelect>
               </div>
-            </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="package-quantity"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Quantidade
-                </label>
-
-                <input
+              <div className="grid grid-cols-2 gap-3">
+                <AppInput
                   id="package-quantity"
+                  label="Quantidade"
                   type="text"
                   inputMode="decimal"
                   required
-                  value={formData.packageQuantity}
-                  onChange={(event) =>
-                    setFormData((currentForm) => ({
-                      ...currentForm,
-                      packageQuantity:
-                        event.target.value,
-                    }))
+                  value={
+                    formData.packageQuantity
                   }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
+                  onChange={(event) =>
+                    setFormData(
+                      (currentForm) => ({
+                        ...currentForm,
+                        packageQuantity:
+                          event.target.value,
+                      })
+                    )
+                  }
                 />
-              </div>
 
-              <div className="space-y-1.5">
-                <label
-                  htmlFor="package-unit"
-                  className="text-sm font-medium text-slate-700"
-                >
-                  Unidade
-                </label>
-
-                <select
+                <AppSelect
                   id="package-unit"
+                  label="Unidade"
                   value={formData.packageUnit}
                   onChange={(event) =>
-                    setFormData((currentForm) => ({
-                      ...currentForm,
-                      packageUnit:
-                        event.target
-                          .value as MeasurementUnit,
-                    }))
+                    setFormData(
+                      (currentForm) => ({
+                        ...currentForm,
+                        packageUnit:
+                          event.target
+                            .value as MeasurementUnit,
+                      })
+                    )
                   }
-                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-base outline-none transition focus:border-slate-400"
                 >
                   <option value="unit">
                     Unidades
@@ -1136,172 +1219,119 @@ function handleAddPriceSubmit(
                   <option value="l">
                     Litros
                   </option>
-                </select>
+                </AppSelect>
               </div>
-            </div>
 
-            <div className="rounded-xl border border-slate-200 p-3">
-              <label className="flex cursor-pointer items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-900">
-                    Em promoção
-                  </p>
-
-                  <p className="text-xs text-slate-500">
-                    Adicionar um preço promocional.
-                  </p>
-                </div>
-
-                <input
-                  type="checkbox"
-                  checked={formData.promotion}
-                  onChange={(event) =>
-                    handlePromotionChange(
-                      event.target.checked
-                    )
-                  }
-                  className="peer sr-only"
-                />
-
-                <span className="relative h-6 w-11 shrink-0 rounded-full bg-slate-200 transition peer-checked:bg-slate-900">
-                  <span className="absolute left-1 top-1 h-4 w-4 rounded-full bg-white transition peer-checked:translate-x-5" />
-                </span>
-              </label>
+              <AppSwitch
+                id="product-promotion"
+                checked={formData.promotion}
+                onCheckedChange={
+                  handlePromotionChange
+                }
+                label="Em promoção"
+                description="Adicionar também um preço promocional."
+                icon={
+                  <Tag className="h-5 w-5" />
+                }
+              />
 
               {formData.promotion && (
-                <div className="mt-4 space-y-1.5">
-                  <label
-                    htmlFor="promotional-price"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Preço promocional
-                  </label>
-
-                  <div className="relative">
-                    <input
-                      id="promotional-price"
-                      type="text"
-                      inputMode="decimal"
-                      required
-                      value={
-                        formData.promotionalPrice
-                      }
-                      onChange={(event) =>
-                        setFormData(
-                          (currentForm) => ({
-                            ...currentForm,
-                            promotionalPrice:
-                              event.target.value,
-                          })
-                        )
-                      }
-                      placeholder="0,00"
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 pr-9 text-base outline-none transition focus:border-slate-400"
-                    />
-
-                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-                      €
-                    </span>
-                  </div>
-                </div>
+                <AppInput
+                  id="promotional-price"
+                  label="Preço promocional"
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  value={
+                    formData.promotionalPrice
+                  }
+                  onChange={(event) =>
+                    setFormData(
+                      (currentForm) => ({
+                        ...currentForm,
+                        promotionalPrice:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="0,00"
+                  suffix="€"
+                />
               )}
-            </div>
 
-            <button
-              type="button"
-              onClick={() =>
-                setShowMoreDetails(
-                  (currentValue) => !currentValue
-                )
-              }
-              className="text-sm font-medium text-slate-600"
-            >
-              {showMoreDetails
-                ? "Ocultar detalhes"
-                : "Mais detalhes"}
-            </button>
+              <AppButton
+                variant="ghost"
+                onClick={() =>
+                  setShowMoreDetails(
+                    (currentValue) =>
+                      !currentValue
+                  )
+                }
+              >
+                {showMoreDetails
+                  ? "Ocultar detalhes"
+                  : "Mais detalhes"}
+              </AppButton>
 
-            {showMoreDetails && (
-              <div className="space-y-4 rounded-xl bg-slate-50 p-4">
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="product-brand"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Marca
-                  </label>
-
-                  <input
+              {showMoreDetails && (
+                <div className="space-y-4 rounded-3xl border border-border bg-muted/30 p-4">
+                  <AppInput
                     id="product-brand"
+                    label="Marca"
                     type="text"
                     value={formData.brand}
                     onChange={(event) =>
                       setFormData(
                         (currentForm) => ({
                           ...currentForm,
-                          brand: event.target.value,
+                          brand:
+                            event.target.value,
                         })
                       )
                     }
                     placeholder="Ex.: Continente"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
                   />
-                </div>
 
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor="product-category"
-                    className="text-sm font-medium text-slate-700"
-                  >
-                    Categoria
-                  </label>
-
-                  <input
+                  <AppInput
                     id="product-category"
+                    label="Categoria"
                     type="text"
-                    value={formData.category}
+                    value={
+                      formData.category
+                    }
                     onChange={(event) =>
                       setFormData(
                         (currentForm) => ({
                           ...currentForm,
-                          category: event.target.value,
+                          category:
+                            event.target.value,
                         })
                       )
                     }
                     placeholder="Ex.: Massas"
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none transition focus:border-slate-400"
+                    description="Só será usada quando estiveres a criar um produto base novo."
                   />
-
-                  <p className="text-xs text-slate-500">
-                    Só será utilizada ao criar um produto
-                    base novo.
-                  </p>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </MobileFullScreenSheetBody>
 
-          <DrawerFooter className="border-t border-slate-100 bg-white">
-            <button
-              type="submit"
-              className="w-full rounded-xl bg-slate-900 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-            >
-              Guardar produto e preço
-            </button>
+            <MobileFullScreenSheetFooter className="space-y-2">
+              <AppButton type="submit">
+                Guardar produto e preço
+              </AppButton>
 
-            <button
-              type="button"
-              onClick={() =>
-                handleOpenChange(false)
-              }
-              className="w-full rounded-xl px-4 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
-            >
-              Cancelar
-            </button>
-          </DrawerFooter>
-        </form>
-      )}  
-      </DrawerContent>
-    </Drawer>
+              <AppButton
+                variant="ghost"
+                onClick={() =>
+                  handleOpenChange(false)
+                }
+              >
+                Cancelar
+              </AppButton>
+            </MobileFullScreenSheetFooter>
+          </form>
+        )}
+      </MobileFullScreenSheetContent>
+    </MobileFullScreenSheet>
   );
 }

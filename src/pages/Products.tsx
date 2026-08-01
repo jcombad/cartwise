@@ -4,11 +4,21 @@ import {
   useState,
 } from "react";
 
+import { AppButton } from "../components/forms/AppButton";
+import { AppInput } from "../components/forms/AppInput";
+
 import AddProductDrawer, {
   type AddPriceFormData,
   type AddProductFormData,
   type AddProductResult,
 } from "../components/products/AddProductDrawer";
+
+import { ProductDetailsSheet } from "../components/products/ProductDetailsSheet";
+
+import { mockBaseProducts } from "../data/mockBaseProducts";
+import { mockPriceRecords } from "../data/mockPriceRecords";
+import { mockProducts } from "../data/mockProducts";
+import { mockStores } from "../data/mockStores";
 
 import {
   createBaseProduct,
@@ -17,11 +27,6 @@ import {
   getNextId,
   normalizeText,
 } from "../lib/productHelpers";
-
-import { mockBaseProducts } from "../data/mockBaseProducts";
-import { mockPriceRecords } from "../data/mockPriceRecords";
-import { mockProducts } from "../data/mockProducts";
-import { mockStores } from "../data/mockStores";
 
 import type {
   BaseProduct,
@@ -34,9 +39,14 @@ import type {
  * Usamos novas chaves para não carregar os dados antigos,
  * que ainda não tinham baseProductId.
  */
-const BASE_PRODUCTS_STORAGE_KEY = "cartwise-v2-base-products";
-const PRODUCTS_STORAGE_KEY = "cartwise-v2-products";
-const PRICE_RECORDS_STORAGE_KEY = "cartwise-v2-price-records";
+const BASE_PRODUCTS_STORAGE_KEY =
+  "cartwise-v2-base-products";
+
+const PRODUCTS_STORAGE_KEY =
+  "cartwise-v2-products";
+
+const PRICE_RECORDS_STORAGE_KEY =
+  "cartwise-v2-price-records";
 
 function getTodayDate() {
   return new Date().toISOString().split("T")[0];
@@ -52,7 +62,9 @@ function getInitialBaseProducts(): BaseProduct[] {
   }
 
   try {
-    return JSON.parse(storedBaseProducts) as BaseProduct[];
+    return JSON.parse(
+      storedBaseProducts
+    ) as BaseProduct[];
   } catch {
     return mockBaseProducts;
   }
@@ -103,7 +115,6 @@ function getInitialPriceRecords(): PriceRecord[] {
   }
 }
 
-
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-PT", {
     style: "currency",
@@ -111,22 +122,38 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function formatDate(date: string) {
+  return new Intl.DateTimeFormat(
+    "pt-PT"
+  ).format(
+    new Date(`${date}T00:00:00`)
+  );
+}
+
 function formatPackageQuantity(
   quantity: number,
   unit: MeasurementUnit
 ) {
-  const unitLabels: Record<MeasurementUnit, string> = {
+  const unitLabels: Record<
+    MeasurementUnit,
+    string
+  > = {
     kg: "kg",
     g: "g",
     l: "L",
     ml: "ml",
-    unit: quantity === 1 ? "unidade" : "unidades",
+    unit:
+      quantity === 1
+        ? "unidade"
+        : "unidades",
   };
 
   return `${quantity} ${unitLabels[unit]}`;
 }
 
-function getNormalizedQuantity(product: Product) {
+function getNormalizedQuantity(
+  product: Product
+) {
   switch (product.packageUnit) {
     case "g":
       return product.packageQuantity / 1000;
@@ -139,7 +166,9 @@ function getNormalizedQuantity(product: Product) {
   }
 }
 
-function getEffectivePrice(priceRecord: PriceRecord) {
+function getEffectivePrice(
+  priceRecord: PriceRecord
+) {
   return (
     priceRecord.promotionalPrice ??
     priceRecord.regularPrice
@@ -184,7 +213,8 @@ function getLatestPriceRecord(
 ) {
   return priceRecords
     .filter(
-      (record) => record.productId === productId
+      (record) =>
+        record.productId === productId
     )
     .sort((firstRecord, secondRecord) => {
       const dateDifference =
@@ -200,20 +230,56 @@ function getLatestPriceRecord(
 }
 
 export default function Products() {
-  const [baseProducts, setBaseProducts] = useState<
-    BaseProduct[]
-  >(getInitialBaseProducts);
+  const [baseProducts, setBaseProducts] =
+    useState<BaseProduct[]>(
+      getInitialBaseProducts
+    );
 
   const [products, setProducts] =
     useState<Product[]>(getInitialProducts);
 
   const [priceRecords, setPriceRecords] =
-    useState<PriceRecord[]>(getInitialPriceRecords);
+    useState<PriceRecord[]>(
+      getInitialPriceRecords
+    );
 
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] =
+    useState("");
 
-  const [isAddProductOpen, setIsAddProductOpen] =
-    useState(false);
+  const [
+    isAddProductOpen,
+    setIsAddProductOpen,
+  ] = useState(false);
+
+  /*
+   * Quando tem um ID, o AddProductDrawer abre
+   * diretamente o formulário rápido desse produto.
+   */
+  const [
+    addPriceProductId,
+    setAddPriceProductId,
+  ] = useState<number | null>(null);
+
+  /*
+   * Controla o produto aberto na folha de detalhe.
+   */
+  const [
+    selectedProductId,
+    setSelectedProductId,
+  ] = useState<number | null>(null);
+
+  const selectedProduct = products.find(
+    (product) =>
+      product.id === selectedProductId
+  );
+
+  const selectedProductBase = selectedProduct
+    ? baseProducts.find(
+        (baseProduct) =>
+          baseProduct.id ===
+          selectedProduct.baseProductId
+      )
+    : undefined;
 
   useEffect(() => {
     localStorage.setItem(
@@ -237,18 +303,20 @@ export default function Products() {
   }, [priceRecords]);
 
   const filteredProducts = useMemo(() => {
-    const normalizedSearchTerm = normalizeText(
-      searchTerm
-    );
+    const normalizedSearchTerm =
+      normalizeText(searchTerm);
 
     if (!normalizedSearchTerm) {
       return products;
     }
 
     return products.filter((product) => {
-      const baseProduct = baseProducts.find(
-        (item) => item.id === product.baseProductId
-      );
+      const baseProduct =
+        baseProducts.find(
+          (item) =>
+            item.id ===
+            product.baseProductId
+        );
 
       const searchableValues = [
         product.name,
@@ -265,293 +333,374 @@ export default function Products() {
           : false
       );
     });
-  }, [searchTerm, products, baseProducts]);
+  }, [
+    searchTerm,
+    products,
+    baseProducts,
+  ]);
 
-function handleAddProduct(
-  productForm: AddProductFormData
-): AddProductResult {
-  const baseProductName =
-    productForm.baseProductName.trim();
+  function handleAddProduct(
+    productForm: AddProductFormData
+  ): AddProductResult {
+    const baseProductName =
+      productForm.baseProductName.trim();
 
-  const commercialName =
-    productForm.commercialName.trim();
+    const commercialName =
+      productForm.commercialName.trim();
 
-  const brand = productForm.brand.trim();
-  const category = productForm.category.trim();
+    const brand = productForm.brand.trim();
+    const category =
+      productForm.category.trim();
 
-  const packageQuantity = Number(
-    productForm.packageQuantity.replace(",", ".")
-  );
-
-  const regularPrice = Number(
-    productForm.regularPrice.replace(",", ".")
-  );
-
-  const promotionalPrice = productForm.promotion
-    ? Number(
-        productForm.promotionalPrice.replace(
-          ",",
-          "."
-        )
+    const packageQuantity = Number(
+      productForm.packageQuantity.replace(
+        ",",
+        "."
       )
-    : undefined;
+    );
 
-  const storeId = Number(productForm.storeId);
+    const regularPrice = Number(
+      productForm.regularPrice.replace(
+        ",",
+        "."
+      )
+    );
 
-  if (
-    !baseProductName ||
-    !Number.isFinite(packageQuantity) ||
-    packageQuantity <= 0 ||
-    !Number.isFinite(regularPrice) ||
-    regularPrice <= 0 ||
-    !storeId
-  ) {
-    return {
-  success: false,
-};
-  }
+    const promotionalPrice =
+      productForm.promotion
+        ? Number(
+            productForm.promotionalPrice.replace(
+              ",",
+              "."
+            )
+          )
+        : undefined;
 
-  if (
-    productForm.promotion &&
-    (!promotionalPrice ||
-      !Number.isFinite(promotionalPrice) ||
-      promotionalPrice <= 0)
-  ) {
-    return {
-  success: false,
-};
-  }
+    const storeId = Number(
+      productForm.storeId
+    );
 
-  if (
-    promotionalPrice !== undefined &&
-    promotionalPrice >= regularPrice
-  ) {
-    return {
-  success: false,
-};
-  }
+    if (
+      !baseProductName ||
+      !Number.isFinite(packageQuantity) ||
+      packageQuantity <= 0 ||
+      !Number.isFinite(regularPrice) ||
+      regularPrice <= 0 ||
+      !storeId
+    ) {
+      return {
+        success: false,
+      };
+    }
 
-  const existingBaseProduct = baseProducts.find(
-    (baseProduct) =>
-      normalizeText(baseProduct.name) ===
-      normalizeText(baseProductName)
-  );
+    if (
+      productForm.promotion &&
+      (!promotionalPrice ||
+        !Number.isFinite(
+          promotionalPrice
+        ) ||
+        promotionalPrice <= 0)
+    ) {
+      return {
+        success: false,
+      };
+    }
 
-  let baseProductId: number;
-  let newBaseProduct:
-    | ReturnType<typeof createBaseProduct>
-    | undefined;
+    if (
+      promotionalPrice !== undefined &&
+      promotionalPrice >= regularPrice
+    ) {
+      return {
+        success: false,
+      };
+    }
 
-  if (existingBaseProduct) {
-    baseProductId = existingBaseProduct.id;
-  } else {
-    baseProductId = getNextId(baseProducts);
+    const existingBaseProduct =
+      baseProducts.find(
+        (baseProduct) =>
+          normalizeText(baseProduct.name) ===
+          normalizeText(baseProductName)
+      );
 
-    newBaseProduct = createBaseProduct({
-      id: baseProductId,
-      name: baseProductName,
-      category,
-      packageUnit: productForm.packageUnit,
+    let baseProductId: number;
+
+    let newBaseProduct:
+      | ReturnType<
+          typeof createBaseProduct
+        >
+      | undefined;
+
+    if (existingBaseProduct) {
+      baseProductId =
+        existingBaseProduct.id;
+    } else {
+      baseProductId =
+        getNextId(baseProducts);
+
+      newBaseProduct = createBaseProduct({
+        id: baseProductId,
+        name: baseProductName,
+        category,
+        packageUnit:
+          productForm.packageUnit,
+      });
+    }
+
+    const candidateProduct = createProduct({
+      id: getNextId(products),
+      baseProductId,
+      baseProductName,
+      commercialName,
+      brand,
+      packageQuantity,
+      packageUnit:
+        productForm.packageUnit,
     });
-  }
 
-  const candidateProduct = createProduct({
-    id: getNextId(products),
-    baseProductId,
-    baseProductName,
-    commercialName,
-    brand,
-    packageQuantity,
-    packageUnit: productForm.packageUnit,
-  });
-
-  const candidateBrand = normalizeText(
-  candidateProduct.brand ?? ""
-);
-
-const existingCommercialProduct = products.find(
-  (product) => {
-    const existingBrand = normalizeText(
-      product.brand ?? ""
+    const candidateBrand = normalizeText(
+      candidateProduct.brand ?? ""
     );
 
-    const brandsAreCompatible =
-      !candidateBrand ||
-      !existingBrand ||
-      candidateBrand === existingBrand;
+    const existingCommercialProduct =
+      products.find((product) => {
+        const existingBrand = normalizeText(
+          product.brand ?? ""
+        );
 
-    return (
-      product.baseProductId === baseProductId &&
-      normalizeText(product.name) ===
-        normalizeText(candidateProduct.name) &&
-      Math.abs(
-        product.packageQuantity -
-          candidateProduct.packageQuantity
-      ) < 0.000001 &&
-      product.packageUnit ===
-        candidateProduct.packageUnit &&
-      brandsAreCompatible
+        const brandsAreCompatible =
+          !candidateBrand ||
+          !existingBrand ||
+          candidateBrand === existingBrand;
+
+        return (
+          product.baseProductId ===
+            baseProductId &&
+          normalizeText(product.name) ===
+            normalizeText(
+              candidateProduct.name
+            ) &&
+          Math.abs(
+            product.packageQuantity -
+              candidateProduct.packageQuantity
+          ) < 0.000001 &&
+          product.packageUnit ===
+            candidateProduct.packageUnit &&
+          brandsAreCompatible
+        );
+      });
+
+    const productId =
+      existingCommercialProduct?.id ??
+      candidateProduct.id;
+
+    const newPriceRecord =
+      createPriceRecord({
+        id: getNextId(priceRecords),
+        productId,
+        storeId,
+        regularPrice,
+        promotionalPrice,
+        promotion:
+          productForm.promotion,
+        date: getTodayDate(),
+      });
+
+    if (newBaseProduct) {
+      setBaseProducts(
+        (currentBaseProducts) => [
+          ...currentBaseProducts,
+          newBaseProduct,
+        ]
+      );
+    }
+
+    if (!existingCommercialProduct) {
+      setProducts((currentProducts) => [
+        ...currentProducts,
+        candidateProduct,
+      ]);
+    }
+
+    setPriceRecords(
+      (currentPriceRecords) => [
+        ...currentPriceRecords,
+        newPriceRecord,
+      ]
     );
-  }
-);
 
-  const productId =
-    existingCommercialProduct?.id ??
-    candidateProduct.id;
-
-  const newPriceRecord = createPriceRecord({
-    id: getNextId(priceRecords),
-    productId,
-    storeId,
-    regularPrice,
-    promotionalPrice,
-    promotion: productForm.promotion,
-    date: getTodayDate(),
-  });
-
-  /*
-   * Só criamos o Produto Base quando ainda não existia
-   * e não foi encontrado um produto comercial equivalente.
-   */
-  if (newBaseProduct) {
-    setBaseProducts((currentBaseProducts) => [
-      ...currentBaseProducts,
-      newBaseProduct,
-    ]);
+    return {
+      success: true,
+      action: existingCommercialProduct
+        ? "added-price"
+        : "created-product",
+      productName:
+        existingCommercialProduct
+          ? existingCommercialProduct.name
+          : candidateProduct.name,
+    };
   }
 
-  /*
-   * Se o produto comercial já existir, não o duplicamos.
-   * Apenas será criado o novo registo de preço.
-   */
-  if (!existingCommercialProduct) {
-    setProducts((currentProducts) => [
-      ...currentProducts,
-      candidateProduct,
-    ]);
-  }
-
-  setPriceRecords((currentPriceRecords) => [
-    ...currentPriceRecords,
-    newPriceRecord,
-  ]);
-
-  return {
-  success: true,
-  action: existingCommercialProduct
-    ? "added-price"
-    : "created-product",
-  productName: existingCommercialProduct
-    ? existingCommercialProduct.name
-    : candidateProduct.name,
-};
-}
-
-function handleAddPrice(
-  priceForm: AddPriceFormData
-): boolean {
-  const regularPrice = Number(
-    priceForm.regularPrice.replace(",", ".")
-  );
-
-  const promotionalPrice = priceForm.promotion
-    ? Number(
-        priceForm.promotionalPrice.replace(
-          ",",
-          "."
-        )
+  function handleAddPrice(
+    priceForm: AddPriceFormData
+  ): boolean {
+    const regularPrice = Number(
+      priceForm.regularPrice.replace(
+        ",",
+        "."
       )
-    : undefined;
+    );
 
-  const storeId = Number(priceForm.storeId);
+    const promotionalPrice =
+      priceForm.promotion
+        ? Number(
+            priceForm.promotionalPrice.replace(
+              ",",
+              "."
+            )
+          )
+        : undefined;
 
-  const productExists = products.some(
-    (product) =>
-      product.id === priceForm.productId
-  );
+    const storeId = Number(
+      priceForm.storeId
+    );
 
-  if (
-    !productExists ||
-    !storeId ||
-    !Number.isFinite(regularPrice) ||
-    regularPrice <= 0
-  ) {
-    return false;
+    const productExists = products.some(
+      (product) =>
+        product.id ===
+        priceForm.productId
+    );
+
+    if (
+      !productExists ||
+      !storeId ||
+      !Number.isFinite(regularPrice) ||
+      regularPrice <= 0
+    ) {
+      return false;
+    }
+
+    if (
+      priceForm.promotion &&
+      (!promotionalPrice ||
+        !Number.isFinite(
+          promotionalPrice
+        ) ||
+        promotionalPrice <= 0)
+    ) {
+      return false;
+    }
+
+    if (
+      promotionalPrice !== undefined &&
+      promotionalPrice >= regularPrice
+    ) {
+      return false;
+    }
+
+    const newPriceRecord =
+      createPriceRecord({
+        id: getNextId(priceRecords),
+        productId: priceForm.productId,
+        storeId,
+        regularPrice,
+        promotionalPrice,
+        promotion: priceForm.promotion,
+        date: getTodayDate(),
+      });
+
+    setPriceRecords(
+      (currentPriceRecords) => [
+        ...currentPriceRecords,
+        newPriceRecord,
+      ]
+    );
+
+    return true;
   }
 
-  if (
-    priceForm.promotion &&
-    (!promotionalPrice ||
-      !Number.isFinite(promotionalPrice) ||
-      promotionalPrice <= 0)
-  ) {
-    return false;
+  function handleOpenNewProductFlow() {
+    setAddPriceProductId(null);
+    setIsAddProductOpen(true);
   }
 
-  if (
-    promotionalPrice !== undefined &&
-    promotionalPrice >= regularPrice
+  function handleOpenProductDetails(
+    productId: number
   ) {
-    return false;
+    setSelectedProductId(productId);
   }
 
-  const newPriceRecord = createPriceRecord({
-    id: getNextId(priceRecords),
-    productId: priceForm.productId,
-    storeId,
-    regularPrice,
-    promotionalPrice,
-    promotion: priceForm.promotion,
-    date: getTodayDate(),
-  });
+  function handleAddPriceFromDetails() {
+    if (!selectedProduct) {
+      return;
+    }
 
-  setPriceRecords((currentPriceRecords) => [
-    ...currentPriceRecords,
-    newPriceRecord,
-  ]);
+    const productId =
+      selectedProduct.id;
 
-  return true;
-}
+    /*
+     * Guardamos primeiro o produto que queremos
+     * atualizar e fechamos a folha de detalhe.
+     */
+    setAddPriceProductId(productId);
+    setSelectedProductId(null);
+
+    /*
+     * Abrimos depois o formulário que, através do
+     * initialProductId, salta diretamente para
+     * "Registar novo preço".
+     */
+    setIsAddProductOpen(true);
+  }
+
+  function handleAddProductOpenChange(
+    nextOpen: boolean
+  ) {
+    setIsAddProductOpen(nextOpen);
+
+    if (!nextOpen) {
+      setAddPriceProductId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-slate-900">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">
           Produtos
         </h1>
 
-        <p className="text-sm text-slate-500">
-          Consulta os produtos comerciais e os respetivos
-          preços.
+        <p className="text-sm text-muted-foreground">
+          Consulta os produtos comerciais e os
+          respetivos preços.
         </p>
       </header>
 
       <div className="space-y-3">
-        <input
+        <AppInput
+          id="product-search"
           type="search"
           value={searchTerm}
           onChange={(event) =>
-            setSearchTerm(event.target.value)
+            setSearchTerm(
+              event.target.value
+            )
           }
           placeholder="Pesquisar produto, marca ou categoria"
-          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-slate-400"
         />
 
-        <button
-          type="button"
-          onClick={() => setIsAddProductOpen(true)}
-          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+        <AppButton
+          onClick={handleOpenNewProductFlow}
         >
           Adicionar produto
-        </button>
+        </AppButton>
       </div>
 
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-slate-900">
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="font-semibold text-foreground">
           Produtos registados
         </h2>
 
-        <span className="text-sm text-slate-500">
+        <span className="text-sm text-muted-foreground">
           {filteredProducts.length}{" "}
           {filteredProducts.length === 1
             ? "produto"
@@ -560,164 +709,237 @@ function handleAddPrice(
       </div>
 
       {filteredProducts.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
-          <p className="font-medium text-slate-900">
+        <div className="rounded-3xl border border-dashed border-border bg-muted/30 p-8 text-center">
+          <p className="font-medium text-foreground">
             Nenhum produto encontrado
           </p>
 
-          <p className="mt-1 text-sm text-slate-500">
-            Experimenta pesquisar por outro nome, marca ou
-            categoria.
+          <p className="mt-1 text-sm text-muted-foreground">
+            Experimenta pesquisar por outro nome,
+            marca ou categoria.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredProducts.map((product) => {
-            const baseProduct = baseProducts.find(
-              (item) =>
-                item.id === product.baseProductId
-            );
-
-            const latestPriceRecord =
-              getLatestPriceRecord(
-                product.id,
-                priceRecords
-              );
-
-            const store = latestPriceRecord
-              ? mockStores.find(
+          {filteredProducts.map(
+            (product) => {
+              const baseProduct =
+                baseProducts.find(
                   (item) =>
-                    item.id === latestPriceRecord.storeId
-                )
-              : undefined;
+                    item.id ===
+                    product.baseProductId
+                );
 
-            const effectivePrice = latestPriceRecord
-              ? getEffectivePrice(latestPriceRecord)
-              : null;
+              const latestPriceRecord =
+                getLatestPriceRecord(
+                  product.id,
+                  priceRecords
+                );
 
-            const unitPrice = latestPriceRecord
-              ? getUnitPrice(
-                  product,
-                  latestPriceRecord
-                )
-              : null;
+              const store =
+                latestPriceRecord
+                  ? mockStores.find(
+                      (item) =>
+                        item.id ===
+                        latestPriceRecord.storeId
+                    )
+                  : undefined;
 
-            return (
-              <article
-                key={product.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-400">
-                      {baseProduct?.name ??
-                        "Produto base desconhecido"}
-                    </p>
+              const effectivePrice =
+                latestPriceRecord
+                  ? getEffectivePrice(
+                      latestPriceRecord
+                    )
+                  : null;
 
-                    <h3 className="mt-1 font-semibold text-slate-900">
-                      {product.name}
-                    </h3>
+              const unitPrice =
+                latestPriceRecord
+                  ? getUnitPrice(
+                      product,
+                      latestPriceRecord
+                    )
+                  : null;
 
-                    <p className="mt-1 text-sm text-slate-500">
-                      {[
-                        product.brand,
-                        formatPackageQuantity(
-                          product.packageQuantity,
-                          product.packageUnit
-                        ),
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </p>
-
-                    {baseProduct?.category && (
-                      <span className="mt-3 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">
-                        {baseProduct.category}
-                      </span>
-                    )}
-                  </div>
-
-                  {latestPriceRecord &&
-                  effectivePrice !== null ? (
-                    <div className="shrink-0 text-right">
-                      {latestPriceRecord.promotion &&
-                        latestPriceRecord.promotionalPrice !==
-                          undefined && (
-                          <p className="text-xs text-slate-400 line-through">
-                            {formatCurrency(
-                              latestPriceRecord.regularPrice
-                            )}
-                          </p>
-                        )}
-
-                      <p className="text-lg font-bold text-slate-900">
-                        {formatCurrency(effectivePrice)}
+              return (
+                <button
+                  key={product.id}
+                  type="button"
+                  onClick={() =>
+                    handleOpenProductDetails(
+                      product.id
+                    )
+                  }
+                  className="
+                    w-full
+                    rounded-3xl
+                    border
+                    border-border
+                    bg-card
+                    p-4
+                    text-left
+                    shadow-sm
+                    transition-colors
+                    hover:bg-muted/40
+                    focus-visible:outline-none
+                    focus-visible:ring-2
+                    focus-visible:ring-primary/30
+                    active:bg-muted
+                  "
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        {baseProduct?.name ??
+                          "Produto base desconhecido"}
                       </p>
 
-                      {unitPrice !== null &&
-                        baseProduct && (
-                          <p className="text-xs text-slate-500">
-                            {formatCurrency(unitPrice)}/
-                            {getComparisonUnitLabel(
-                              baseProduct
-                            )}
-                          </p>
-                        )}
-                    </div>
-                  ) : (
-                    <span className="shrink-0 text-xs text-slate-400">
-                      Sem preços
-                    </span>
-                  )}
-                </div>
+                      <h3 className="mt-1 font-semibold text-card-foreground">
+                        {product.name}
+                      </h3>
 
-                {latestPriceRecord && (
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs text-slate-500">
-                    <div className="flex items-center gap-2">
-                      {store && (
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{
-                            backgroundColor: store.color,
-                          }}
-                        />
-                      )}
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {[
+                          product.brand,
+                          formatPackageQuantity(
+                            product.packageQuantity,
+                            product.packageUnit
+                          ),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
 
-                      <span>
-                        {store?.name ??
-                          "Supermercado desconhecido"}
-                      </span>
-
-                      {latestPriceRecord.promotion && (
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 font-medium text-amber-700">
-                          Promoção
+                      {baseProduct?.category && (
+                        <span className="mt-3 inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                          {
+                            baseProduct.category
+                          }
                         </span>
                       )}
                     </div>
 
-                    <time dateTime={latestPriceRecord.date}>
-                      {new Intl.DateTimeFormat(
-                        "pt-PT"
-                      ).format(
-                        new Date(
-                          `${latestPriceRecord.date}T00:00:00`
-                        )
-                      )}
-                    </time>
+                    {latestPriceRecord &&
+                    effectivePrice !== null ? (
+                      <div className="shrink-0 text-right">
+                        {latestPriceRecord.promotion &&
+                          latestPriceRecord.promotionalPrice !==
+                            undefined && (
+                            <p className="text-xs text-muted-foreground line-through">
+                              {formatCurrency(
+                                latestPriceRecord.regularPrice
+                              )}
+                            </p>
+                          )}
+
+                        <p className="text-lg font-bold text-card-foreground">
+                          {formatCurrency(
+                            effectivePrice
+                          )}
+                        </p>
+
+                        {unitPrice !== null &&
+                          baseProduct && (
+                            <p className="text-xs text-muted-foreground">
+                              {formatCurrency(
+                                unitPrice
+                              )}
+                              /
+                              {getComparisonUnitLabel(
+                                baseProduct
+                              )}
+                            </p>
+                          )}
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        Sem preços
+                      </span>
+                    )}
                   </div>
-                )}
-              </article>
-            );
-          })}
+
+                  {latestPriceRecord && (
+                    <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3 text-xs text-muted-foreground">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {store && (
+                          <span
+                            className="h-2.5 w-2.5 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor:
+                                store.color,
+                            }}
+                          />
+                        )}
+
+                        <span className="truncate">
+                          {store?.name ??
+                            "Supermercado desconhecido"}
+                        </span>
+
+                        {latestPriceRecord.promotion && (
+                          <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 font-medium text-amber-700 dark:text-amber-400">
+                            Promoção
+                          </span>
+                        )}
+                      </div>
+
+                      <time
+                        className="shrink-0"
+                        dateTime={
+                          latestPriceRecord.date
+                        }
+                      >
+                        {formatDate(
+                          latestPriceRecord.date
+                        )}
+                      </time>
+                    </div>
+                  )}
+                </button>
+              );
+            }
+          )}
         </div>
       )}
+
+      <ProductDetailsSheet
+        open={selectedProductId !== null}
+        product={selectedProduct}
+        baseProduct={selectedProductBase}
+        products={products}
+        priceRecords={priceRecords}
+        stores={mockStores}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setSelectedProductId(null);
+          }
+        }}
+        onAddPrice={handleAddPriceFromDetails}
+        onSelectProduct={(productId) => {
+          setSelectedProductId(productId);
+        }}  
+      />
 
       <AddProductDrawer
         open={isAddProductOpen}
         baseProducts={baseProducts}
         products={products}
         priceRecords={priceRecords}
-        onOpenChange={setIsAddProductOpen}
+        initialProductId={addPriceProductId}
+        onOpenChange={
+          handleAddProductOpenChange
+        }
+        onBackFromInitialProduct={() => {
+          if (addPriceProductId == null) {
+            return;
+          }
+
+          const productId =
+            addPriceProductId;
+
+          setIsAddProductOpen(false);
+          setAddPriceProductId(null);
+          setSelectedProductId(productId);
+        }}
         onSubmit={handleAddProduct}
         onAddPrice={handleAddPrice}
       />
