@@ -5,7 +5,10 @@ export type MeasurementUnit =
   | "ml"
   | "unit";
 
-export type ComparisonUnit = "kg" | "l" | "unit";
+export type ComparisonUnit =
+  | "kg"
+  | "l"
+  | "unit";
 
 export interface BaseProduct {
   id: number;
@@ -74,16 +77,78 @@ export interface PriceRecord {
   userId?: string;
 }
 
+export type ShoppingListAssignmentMode =
+  | "automatic"
+  | "manual";
+
 export interface ShoppingListItem {
   id: number;
-  productId: number;
+
+  /**
+   * Necessidade de compra.
+   *
+   * A lista guarda o Produto Base para permitir ao CartWise
+   * escolher automaticamente a alternativa comercial mais barata.
+   */
+  baseProductId: number;
+
+  /**
+   * Número de embalagens pretendidas.
+   */
+  quantity: number;
+
+  /**
+   * Produto e supermercado recomendados automaticamente
+   * pelo CartWise com base nos preços mais recentes.
+   */
+  recommendedProductId?: number;
+  recommendedStoreId?: number;
+
+  /**
+   * Produto e supermercado efetivamente escolhidos.
+   *
+   * Quando o modo é automático, normalmente coincidem com
+   * a recomendação. Quando o utilizador altera manualmente,
+   * estes campos preservam a escolha feita.
+   */
+  selectedProductId?: number;
+  selectedStoreId?: number;
+
+  assignmentMode: ShoppingListAssignmentMode;
+
   completed: boolean;
+
+  /**
+   * Preço estimado da embalagem escolhida no momento
+   * em que a lista é consultada.
+   */
+  estimatedUnitPrice?: number;
+
+  /**
+   * Preço realmente pago por embalagem.
+   *
+   * Será preenchido quando o item for concluído.
+   */
+  actualUnitPrice?: number;
+
+  notes?: string;
 }
+
+export type ShoppingListStatus =
+  | "active"
+  | "completed"
+  | "archived";
 
 export interface UserShoppingList {
   id: number;
   userId?: string;
+
   name: string;
-  storeId?: number;
+
+  status: ShoppingListStatus;
+
+  createdAt: string;
+  completedAt?: string;
+
   items: ShoppingListItem[];
 }
