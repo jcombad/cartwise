@@ -39,7 +39,7 @@ type ProductDetailsSheetProps = {
 type ComparableProduct = {
   product: Product;
   latestPriceRecord: PriceRecord;
-  store?: Store;
+  store: Store | undefined;
   effectivePrice: number;
   unitPrice: number;
   difference: number;

@@ -5,28 +5,31 @@ import {
   Undo2,
 } from "lucide-react";
 
-import {
-  useMemo,
-  useState,
-} from "react";
+import { useState } from "react";
 
 import { AppButton } from "@/components/forms/AppButton";
-import { AppInput } from "@/components/forms/AppInput";
 
-import {
-  MobileFullScreenSheet,
-  MobileFullScreenSheetBody,
-  MobileFullScreenSheetContent,
-  MobileFullScreenSheetFooter,
-  MobileFullScreenSheetHeader,
-  MobileFullScreenSheetTitle,
-} from "@/components/layout/MobileFullScreenSheet";
+import AddProductDrawer, {
+  type AddPriceFormData,
+  type AddProductFormData,
+  type AddProductResult,
+} from "@/components/products/AddProductDrawer";
 
-import { mockBaseProducts } from "@/data/mockBaseProducts";
-import { mockPriceRecords } from "@/data/mockPriceRecords";
-import { mockProducts } from "@/data/mockProducts";
+import { AddShoppingProductSheet } from "@/components/shopping/AddShoppingProductSheet";
+import { ChooseShoppingStoreSheet } from "@/components/shopping/ChooseShoppingStoreSheet";
+import { UnassignedShoppingItemSheet } from "@/components/shopping/UnassignedShoppingItemSheet";
+
 import { mockStores } from "@/data/mockStores";
 import { mockUserShoppingLists } from "@/data/mockUserShoppingLists";
+
+import {
+  addCatalogPrice,
+  addCatalogProduct,
+} from "@/lib/catalogService";
+
+import {
+  getStoredCatalog,
+} from "@/lib/catalogStorage";
 
 import {
   getProductRecommendation,
@@ -38,12 +41,13 @@ import type {
 
 /*
  * Estas props são mantidas temporariamente para não partir
- * o App.tsx enquanto o Dashboard ainda usa as listas antigas.
+ * possíveis utilizações antigas do componente.
  *
- * Serão removidas quando migrarmos o Dashboard.
+ * Serão removidas quando fizermos a limpeza final da Fase 5.
  */
 type ShoppingListsProps = {
   shoppingLists?: unknown[];
+
   onToggleProduct?: (
     shoppingListId: number,
     productId: number
@@ -80,9 +84,7 @@ function getInitialShoppingListItems(): ShoppingListItem[] {
 
   /*
    * Aproveitamos temporariamente os itens da primeira
-   * lista mock para não começar com o ecrã totalmente vazio.
-   *
-   * Este mock será eliminado mais tarde.
+   * lista mock para não começar com o ecrã vazio.
    */
   return mockUserShoppingLists[0]?.items ?? [];
 }
@@ -124,33 +126,55 @@ export default function ShoppingLists(
   ] = useState(false);
 
   const [
-    productSearch,
-    setProductSearch,
-  ] = useState("");
+    selectedUnassignedItemId,
+    setSelectedUnassignedItemId,
+  ] = useState<number | null>(null);
 
-  const filteredBaseProducts =
-    useMemo(() => {
-      const normalizedSearch =
-        productSearch
-          .trim()
-          .toLocaleLowerCase("pt-PT");
+  const [
+    isAddProductDrawerOpen,
+    setIsAddProductDrawerOpen,
+  ] = useState(false);
 
-      if (!normalizedSearch) {
-        return mockBaseProducts;
-      }
+  const [
+    initialBaseProductName,
+    setInitialBaseProductName,
+  ] = useState<string | null>(null);
 
-      return mockBaseProducts.filter(
-        (baseProduct) =>
-          [
-            baseProduct.name,
-            baseProduct.category,
-          ].some((value) =>
-            value
-              ?.toLocaleLowerCase("pt-PT")
-              .includes(normalizedSearch)
-          )
-      );
-    }, [productSearch]);
+  /*
+   * Guarda o item livre que está a ser convertido
+   * num produto real do catálogo.
+   */
+  const [
+    catalogItemId,
+    setCatalogItemId,
+  ] = useState<number | null>(null);
+
+  /*
+   * Controla a sheet de seleção de supermercado.
+   */
+  const [
+    isChooseStoreOpen,
+    setIsChooseStoreOpen,
+  ] = useState(false);
+
+  /*
+   * Guarda o item livre cujo supermercado
+   * está a ser escolhido manualmente.
+   */
+  const [
+    storeSelectionItemId,
+    setStoreSelectionItemId,
+  ] = useState<number | null>(null);
+
+  /*
+   * Lemos sempre o catálogo atual guardado pela aplicação,
+   * incluindo os produtos criados pelo utilizador.
+   */
+  const {
+    baseProducts,
+    products,
+    priceRecords,
+  } = getStoredCatalog();
 
   const pendingItems =
     shoppingListItems.filter(
@@ -160,6 +184,20 @@ export default function ShoppingLists(
   const completedItems =
     shoppingListItems.filter(
       (item) => item.completed
+    );
+
+  const selectedUnassignedItem =
+    shoppingListItems.find(
+      (item) =>
+        item.id ===
+        selectedUnassignedItemId
+    );
+
+  const storeSelectionItem =
+    shoppingListItems.find(
+      (item) =>
+        item.id ===
+        storeSelectionItemId
     );
 
   function saveShoppingListItems(
@@ -185,7 +223,7 @@ export default function ShoppingLists(
       );
 
     /*
-     * Se o produto já estiver pendente na lista,
+     * Se o produto já estiver pendente,
      * aumentamos apenas a quantidade.
      */
     if (existingItem) {
@@ -202,17 +240,14 @@ export default function ShoppingLists(
 
       saveShoppingListItems(nextItems);
 
-      setIsAddProductOpen(false);
-      setProductSearch("");
-
       return;
     }
 
     const recommendation =
       getProductRecommendation(
         baseProductId,
-        mockProducts,
-        mockPriceRecords,
+        products,
+        priceRecords,
         mockStores
       );
 
@@ -248,9 +283,92 @@ export default function ShoppingLists(
       ...shoppingListItems,
       newItem,
     ]);
+  }
 
-    setIsAddProductOpen(false);
-    setProductSearch("");
+  function handleAddCustomProduct(
+    productName: string
+  ) {
+    const trimmedName =
+      productName.trim();
+
+    const normalizedName =
+      trimmedName.toLocaleLowerCase(
+        "pt-PT"
+      );
+
+    if (!normalizedName) {
+      return;
+    }
+
+    const existingItem =
+      shoppingListItems.find(
+        (item) =>
+          !item.completed &&
+          item.customName
+            ?.trim()
+            .toLocaleLowerCase(
+              "pt-PT"
+            ) === normalizedName
+      );
+
+    if (existingItem) {
+      const nextItems =
+        shoppingListItems.map((item) =>
+          item.id === existingItem.id
+            ? {
+                ...item,
+                quantity:
+                  item.quantity + 1,
+              }
+            : item
+        );
+
+      saveShoppingListItems(nextItems);
+
+      return;
+    }
+
+    const newItem: ShoppingListItem = {
+      id: getNextItemId(
+        shoppingListItems
+      ),
+
+      customName: trimmedName,
+      quantity: 1,
+
+      assignmentMode: "automatic",
+
+      completed: false,
+    };
+
+    saveShoppingListItems([
+      ...shoppingListItems,
+      newItem,
+    ]);
+  }
+
+  function handleShoppingItemClick(
+    item: ShoppingListItem
+  ) {
+    /*
+     * Quando o produto ainda é um item livre,
+     * abrimos as opções de supermercado ou catálogo.
+     *
+     * Isto também permite voltar a alterar o supermercado
+     * de um item livre já atribuído manualmente.
+     */
+    if (
+      item.baseProductId === undefined &&
+      item.customName
+    ) {
+      setSelectedUnassignedItemId(
+        item.id
+      );
+
+      return;
+    }
+
+    handleCompleteItem(item.id);
   }
 
   function handleCompleteItem(
@@ -294,6 +412,144 @@ export default function ShoppingLists(
     saveShoppingListItems(nextItems);
   }
 
+  function handleCreateCatalogProduct(
+    formData: AddProductFormData
+  ): AddProductResult {
+    const result =
+      addCatalogProduct(formData);
+
+    if (!result.success) {
+      return {
+        success: false,
+      };
+    }
+
+    /*
+     * O serviço já devolve o catálogo atualizado.
+     * Calculamos agora a recomendação para o Produto Base
+     * que acabou de ser criado ou encontrado.
+     */
+    const recommendation =
+      getProductRecommendation(
+        result.baseProductId,
+        result.products,
+        result.priceRecords,
+        mockStores
+      );
+
+    /*
+     * Se o formulário foi aberto através de um item livre,
+     * convertemos esse mesmo item num item normal.
+     *
+     * Mantemos o ID, a quantidade e o estado atual.
+     */
+    if (catalogItemId !== null) {
+      const nextItems =
+        shoppingListItems.map((item) => {
+          if (item.id !== catalogItemId) {
+            return item;
+          }
+
+          return {
+            ...item,
+
+            baseProductId:
+              result.baseProductId,
+
+            customName: undefined,
+
+            recommendedProductId:
+              recommendation?.product.id,
+
+            recommendedStoreId:
+              recommendation?.store.id,
+
+            selectedProductId:
+              recommendation?.product.id,
+
+            selectedStoreId:
+              recommendation?.store.id,
+
+            assignmentMode:
+              "automatic" as const,
+
+            estimatedUnitPrice:
+              recommendation?.effectivePrice,
+          };
+        });
+
+      saveShoppingListItems(nextItems);
+    }
+
+    setCatalogItemId(null);
+
+    return {
+      success: true,
+      action: result.action,
+      productName: result.productName,
+    };
+  }
+
+  function handleAddCatalogPrice(
+    formData: AddPriceFormData
+  ): boolean {
+    const result =
+      addCatalogPrice(formData);
+
+    return result.success;
+  }
+
+  function handleChooseStore() {
+    if (!selectedUnassignedItem) {
+      return;
+    }
+
+    const itemId =
+      selectedUnassignedItem.id;
+
+    /*
+     * Fechamos primeiro a sheet de opções.
+     */
+    setSelectedUnassignedItemId(null);
+
+    /*
+     * Abrimos a sheet dos supermercados apenas
+     * depois da anterior ser desmontada.
+     */
+    window.setTimeout(() => {
+      setStoreSelectionItemId(itemId);
+      setIsChooseStoreOpen(true);
+    }, 0);
+  }
+
+  function handleSelectStore(
+    storeId: number
+  ) {
+    if (storeSelectionItemId === null) {
+      return;
+    }
+
+    const nextItems =
+      shoppingListItems.map((item) =>
+        item.id === storeSelectionItemId
+          ? {
+              ...item,
+
+              selectedStoreId:
+                storeId,
+
+              assignmentMode:
+                "manual" as const,
+            }
+          : item
+      );
+
+    saveShoppingListItems(nextItems);
+
+    setIsChooseStoreOpen(false);
+    setStoreSelectionItemId(null);
+  }
+
   const estimatedTotal =
     pendingItems.reduce(
       (total, item) =>
@@ -325,14 +581,19 @@ export default function ShoppingLists(
 
     if (existingGroup) {
       existingGroup.items.push(item);
+
       return;
     }
 
     storeGroupsMap.set(storeId, {
       storeId,
+
       storeName:
         store?.name ?? "Por atribuir",
-      storeColor: store?.color,
+
+      storeColor:
+        store?.color,
+
       items: [item],
     });
   });
@@ -472,14 +733,14 @@ export default function ShoppingLists(
                     {group.items.map(
                       (item, index) => {
                         const baseProduct =
-                          mockBaseProducts.find(
+                          baseProducts.find(
                             (product) =>
                               product.id ===
                               item.baseProductId
                           );
 
                         const selectedProduct =
-                          mockProducts.find(
+                          products.find(
                             (product) =>
                               product.id ===
                               item.selectedProductId
@@ -495,8 +756,8 @@ export default function ShoppingLists(
                             key={item.id}
                             type="button"
                             onClick={() =>
-                              handleCompleteItem(
-                                item.id
+                              handleShoppingItemClick(
+                                item
                               )
                             }
                             className={`
@@ -537,13 +798,24 @@ export default function ShoppingLists(
                             <div className="min-w-0 flex-1">
                               <p className="font-semibold text-card-foreground">
                                 {baseProduct?.name ??
+                                  item.customName ??
                                   "Produto desconhecido"}
                               </p>
 
                               <p className="mt-1 truncate text-sm text-muted-foreground">
-                                {item.quantity} ×{" "}
-                                {selectedProduct?.name ??
-                                  "Sem produto atribuído"}
+                                {item.baseProductId !==
+                                undefined ? (
+                                  <>
+                                    {item.quantity} ×{" "}
+                                    {selectedProduct?.name ??
+                                      "Sem produto atribuído"}
+                                  </>
+                                ) : (
+                                  <>
+                                    {item.quantity} ×{" "}
+                                    Sem produto registado
+                                  </>
+                                )}
                               </p>
                             </div>
 
@@ -616,7 +888,7 @@ export default function ShoppingLists(
               {completedItems.map(
                 (item, index) => {
                   const baseProduct =
-                    mockBaseProducts.find(
+                    baseProducts.find(
                       (product) =>
                         product.id ===
                         item.baseProductId
@@ -660,6 +932,7 @@ export default function ShoppingLists(
 
                       <p className="min-w-0 flex-1 truncate text-sm font-medium text-muted-foreground line-through">
                         {baseProduct?.name ??
+                          item.customName ??
                           "Produto desconhecido"}
                       </p>
 
@@ -676,165 +949,136 @@ export default function ShoppingLists(
         )}
       </div>
 
-      <MobileFullScreenSheet
+      <AddShoppingProductSheet
         open={isAddProductOpen}
-        onOpenChange={(nextOpen) => {
-          setIsAddProductOpen(nextOpen);
+        onOpenChange={
+          setIsAddProductOpen
+        }
+        onSelectBaseProduct={
+          handleAddBaseProduct
+        }
+        onAddCustomProduct={
+          handleAddCustomProduct
+        }
+      />
 
+      <UnassignedShoppingItemSheet
+        open={
+          selectedUnassignedItem !==
+          undefined
+        }
+        productName={
+          selectedUnassignedItem
+            ?.customName ?? ""
+        }
+        onOpenChange={(nextOpen) => {
           if (!nextOpen) {
-            setProductSearch("");
+            setSelectedUnassignedItemId(
+              null
+            );
           }
         }}
-      >
-        <MobileFullScreenSheetContent
-          onClose={() =>
-            setIsAddProductOpen(false)
+        onCreateProduct={() => {
+          if (
+            !selectedUnassignedItem
+              ?.customName
+          ) {
+            return;
           }
-        >
-          <div className="flex min-h-0 flex-1 flex-col">
-            <MobileFullScreenSheetHeader>
-              <MobileFullScreenSheetTitle>
-                O que está a faltar?
-              </MobileFullScreenSheetTitle>
 
-              <p className="mt-1 text-sm text-muted-foreground">
-                Escolhe o produto. O CartWise trata
-                automaticamente do supermercado.
-              </p>
-            </MobileFullScreenSheetHeader>
+          const itemId =
+            selectedUnassignedItem.id;
 
-            <MobileFullScreenSheetBody className="space-y-5">
-              <AppInput
-                id="shopping-list-product-search"
-                type="search"
-                autoFocus
-                value={productSearch}
-                onChange={(event) =>
-                  setProductSearch(
-                    event.target.value
-                  )
-                }
-                placeholder="Ex.: Esparguete"
-              />
+          const productName =
+            selectedUnassignedItem
+              .customName;
 
-              <section className="space-y-2">
-                <p className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Produtos
-                </p>
+          /*
+           * Primeiro fechamos completamente
+           * a sheet do item por atribuir.
+           */
+          setSelectedUnassignedItemId(
+            null
+          );
 
-                {filteredBaseProducts.length >
-                0 ? (
-                  <div className="overflow-hidden rounded-3xl border border-border bg-card">
-                    {filteredBaseProducts.map(
-                      (
-                        baseProduct,
-                        index
-                      ) => {
-                        const recommendation =
-                          getProductRecommendation(
-                            baseProduct.id,
-                            mockProducts,
-                            mockPriceRecords,
-                            mockStores
-                          );
+          /*
+           * Só no ciclo seguinte abrimos
+           * o formulário de criação.
+           */
+          window.setTimeout(() => {
+            setCatalogItemId(itemId);
 
-                        return (
-                          <button
-                            key={
-                              baseProduct.id
-                            }
-                            type="button"
-                            onClick={() =>
-                              handleAddBaseProduct(
-                                baseProduct.id
-                              )
-                            }
-                            className={`
-                              flex
-                              min-h-16
-                              w-full
-                              items-center
-                              justify-between
-                              gap-4
-                              px-4
-                              py-3.5
-                              text-left
-                              transition-colors
-                              hover:bg-muted/70
-                              active:bg-muted
-                              ${
-                                index !==
-                                filteredBaseProducts.length -
-                                  1
-                                  ? "border-b border-border"
-                                  : ""
-                              }
-                            `}
-                          >
-                            <div className="min-w-0">
-                              <p className="font-semibold text-card-foreground">
-                                {baseProduct.name}
-                              </p>
+            setInitialBaseProductName(
+              productName
+            );
 
-                              {baseProduct.category && (
-                                <p className="mt-0.5 text-sm text-muted-foreground">
-                                  {
-                                    baseProduct.category
-                                  }
-                                </p>
-                              )}
-                            </div>
+            setIsAddProductDrawerOpen(
+              true
+            );
+          }, 0);
+        }}
+        onChooseStore={
+          handleChooseStore
+        }
+      />
 
-                            <div className="shrink-0 text-right">
-                              {recommendation ? (
-                                <>
-                                  <p className="text-sm font-semibold text-card-foreground">
-                                    {
-                                      recommendation
-                                        .store.name
-                                    }
-                                  </p>
+      <ChooseShoppingStoreSheet
+        open={isChooseStoreOpen}
+        productName={
+          storeSelectionItem
+            ?.customName ?? ""
+        }
+        stores={mockStores}
+        onOpenChange={(nextOpen) => {
+          setIsChooseStoreOpen(
+            nextOpen
+          );
 
-                                  <p className="mt-0.5 text-xs text-muted-foreground">
-                                    {formatCurrency(
-                                      recommendation.effectivePrice
-                                    )}
-                                  </p>
-                                </>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  Por atribuir
-                                </span>
-                              )}
-                            </div>
-                          </button>
-                        );
-                      }
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-3xl border border-dashed border-border bg-muted/30 p-6 text-center">
-                    <p className="font-medium text-foreground">
-                      Nenhum produto encontrado
-                    </p>
-                  </div>
-                )}
-              </section>
-            </MobileFullScreenSheetBody>
+          if (!nextOpen) {
+            setStoreSelectionItemId(
+              null
+            );
+          }
+        }}
+        onSelectStore={
+          handleSelectStore
+        }
+      />
 
-            <MobileFullScreenSheetFooter>
-              <AppButton
-                variant="ghost"
-                onClick={() =>
-                  setIsAddProductOpen(false)
-                }
-              >
-                Cancelar
-              </AppButton>
-            </MobileFullScreenSheetFooter>
-          </div>
-        </MobileFullScreenSheetContent>
-      </MobileFullScreenSheet>
+      <AddProductDrawer
+        key={
+          initialBaseProductName ??
+          "standard-product-drawer"
+        }
+        open={
+          isAddProductDrawerOpen
+        }
+        initialBaseProductName={
+          initialBaseProductName
+        }
+        baseProducts={baseProducts}
+        products={products}
+        priceRecords={priceRecords}
+        onOpenChange={(nextOpen) => {
+          setIsAddProductDrawerOpen(
+            nextOpen
+          );
+
+          if (!nextOpen) {
+            setInitialBaseProductName(
+              null
+            );
+
+            setCatalogItemId(null);
+          }
+        }}
+        onSubmit={
+          handleCreateCatalogProduct
+        }
+        onAddPrice={
+          handleAddCatalogPrice
+        }
+      />
     </>
   );
 }

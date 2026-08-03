@@ -86,6 +86,7 @@ type AddProductDrawerProps = {
   products: Product[];
   priceRecords: PriceRecord[];
   initialProductId?: number | null;
+  initialBaseProductName?: string | null;
   onOpenChange: (open: boolean) => void;
   onBackFromInitialProduct?: () => void;
   onSubmit: (
@@ -201,23 +202,29 @@ export default function AddProductDrawer({
   products,
   priceRecords,
   initialProductId,
+  initialBaseProductName,
   onOpenChange,
   onBackFromInitialProduct,
   onSubmit,
   onAddPrice,
 }: AddProductDrawerProps) {
   const [formData, setFormData] =
-    useState<AddProductFormData>(
-      createInitialFormData
-    );
+  useState<AddProductFormData>(() => ({
+    ...createInitialFormData(),
+
+    baseProductName:
+      initialBaseProductName?.trim() ?? "",
+  }));
 
   const [showMoreDetails, setShowMoreDetails] =
     useState(false);
 
   const [step, setStep] =
-    useState<AddProductStep>(
-      "select-base-product"
-    );
+  useState<AddProductStep>(() =>
+    initialBaseProductName?.trim()
+      ? "create-product"
+      : "select-base-product"
+  );
 
   const [
     selectedBaseProductId,
@@ -284,6 +291,35 @@ useEffect(() => {
   if (!open || initialProductId == null) {
     return;
   }
+
+useEffect(() => {
+  if (
+    !open ||
+    initialProductId != null ||
+    !initialBaseProductName?.trim()
+  ) {
+    return;
+  }
+
+  const baseProductName =
+    initialBaseProductName.trim();
+
+  setSelectedBaseProductId(null);
+  setSelectedProductId(null);
+  setBaseProductSearch(baseProductName);
+  setShowMoreDetails(false);
+
+  setFormData({
+    ...createInitialFormData(),
+    baseProductName,
+  });
+
+  setStep("create-product");
+}, [
+  open,
+  initialProductId,
+  initialBaseProductName,
+]);  
 
   const initialProduct = products.find(
     (product) =>

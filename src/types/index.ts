@@ -41,14 +41,6 @@ export interface Product {
    */
   baseProductId: number;
 
-  /**
-   * Nome do produto comercial concreto.
-   *
-   * Exemplos:
-   * - Esparguete Continente
-   * - Esparguete Combino
-   * - Leite Meio Gordo Mimosa
-   */
   name: string;
 
   brand?: string;
@@ -85,32 +77,24 @@ export interface ShoppingListItem {
   id: number;
 
   /**
-   * Necessidade de compra.
+   * Produto Base existente no catálogo.
    *
-   * A lista guarda o Produto Base para permitir ao CartWise
-   * escolher automaticamente a alternativa comercial mais barata.
+   * Fica vazio quando o utilizador adiciona
+   * algo que ainda não existe.
    */
-  baseProductId: number;
+  baseProductId?: number;
 
   /**
-   * Número de embalagens pretendidas.
+   * Nome livre para um produto que ainda
+   * não existe no catálogo.
    */
+  customName?: string;
+
   quantity: number;
 
-  /**
-   * Produto e supermercado recomendados automaticamente
-   * pelo CartWise com base nos preços mais recentes.
-   */
   recommendedProductId?: number;
   recommendedStoreId?: number;
 
-  /**
-   * Produto e supermercado efetivamente escolhidos.
-   *
-   * Quando o modo é automático, normalmente coincidem com
-   * a recomendação. Quando o utilizador altera manualmente,
-   * estes campos preservam a escolha feita.
-   */
   selectedProductId?: number;
   selectedStoreId?: number;
 
@@ -118,17 +102,7 @@ export interface ShoppingListItem {
 
   completed: boolean;
 
-  /**
-   * Preço estimado da embalagem escolhida no momento
-   * em que a lista é consultada.
-   */
   estimatedUnitPrice?: number;
-
-  /**
-   * Preço realmente pago por embalagem.
-   *
-   * Será preenchido quando o item for concluído.
-   */
   actualUnitPrice?: number;
 
   notes?: string;
