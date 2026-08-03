@@ -7,6 +7,8 @@ import {
 
 import { useState } from "react";
 
+import { toast } from "sonner";
+
 import { AppButton } from "@/components/forms/AppButton";
 
 import AddProductDrawer, {
@@ -17,6 +19,8 @@ import AddProductDrawer, {
 
 import { AddShoppingProductSheet } from "@/components/shopping/AddShoppingProductSheet";
 import { ChooseShoppingStoreSheet } from "@/components/shopping/ChooseShoppingStoreSheet";
+import { ShoppingItemQuantitySheet } from "@/components/shopping/ShoppingItemQuantitySheet";
+import { ShoppingListItemRow } from "@/components/shopping/ShoppingListItemRow";
 import { UnassignedShoppingItemSheet } from "@/components/shopping/UnassignedShoppingItemSheet";
 
 import { mockStores } from "@/data/mockStores";
@@ -27,9 +31,7 @@ import {
   addCatalogProduct,
 } from "@/lib/catalogService";
 
-import {
-  getStoredCatalog,
-} from "@/lib/catalogStorage";
+import { getStoredCatalog } from "@/lib/catalogStorage";
 
 import {
   getProductRecommendation,
@@ -167,6 +169,15 @@ export default function ShoppingLists(
   ] = useState<number | null>(null);
 
   /*
+   * Guarda o item cuja quantidade
+   * está a ser editada.
+   */
+  const [
+    quantityItemId,
+    setQuantityItemId,
+  ] = useState<number | null>(null);
+
+  /*
    * Lemos sempre o catálogo atual guardado pela aplicação,
    * incluindo os produtos criados pelo utilizador.
    */
@@ -198,6 +209,12 @@ export default function ShoppingLists(
       (item) =>
         item.id ===
         storeSelectionItemId
+    );
+
+  const quantityItem =
+    shoppingListItems.find(
+      (item) =>
+        item.id === quantityItemId
     );
 
   function saveShoppingListItems(
@@ -550,6 +567,134 @@ export default function ShoppingLists(
     setStoreSelectionItemId(null);
   }
 
+  function handleIncreaseQuantity() {
+    if (quantityItemId === null) {
+      return;
+    }
+
+    const nextItems =
+      shoppingListItems.map((item) =>
+        item.id === quantityItemId
+          ? {
+              ...item,
+              quantity:
+                item.quantity + 1,
+            }
+          : item
+      );
+
+    saveShoppingListItems(nextItems);
+  }
+
+  function handleDecreaseQuantity() {
+    if (quantityItemId === null) {
+      return;
+    }
+
+    const nextItems =
+      shoppingListItems.map((item) =>
+        item.id === quantityItemId
+          ? {
+              ...item,
+              quantity: Math.max(
+                1,
+                item.quantity - 1
+              ),
+            }
+          : item
+      );
+
+    saveShoppingListItems(nextItems);
+  }
+
+  function handleRemoveItem(
+  itemId: number
+) {
+  const removedItem =
+    shoppingListItems.find(
+      (item) => item.id === itemId
+    );
+
+  if (!removedItem) {
+    return;
+  }
+
+  const removedItemIndex =
+    shoppingListItems.findIndex(
+      (item) => item.id === itemId
+    );
+
+  const baseProduct =
+    baseProducts.find(
+      (product) =>
+        product.id ===
+        removedItem.baseProductId
+    );
+
+  const itemName =
+    baseProduct?.name ??
+    removedItem.customName ??
+    "Produto";
+
+  const nextItems =
+    shoppingListItems.filter(
+      (item) => item.id !== itemId
+    );
+
+  saveShoppingListItems(nextItems);
+
+  toast(`${itemName} removido`, {
+    action: {
+      label: "Desfazer",
+
+      onClick: () => {
+        setShoppingListItems(
+          (currentItems) => {
+            /*
+             * Evita restaurar duas vezes
+             * o mesmo item.
+             */
+            if (
+              currentItems.some(
+                (item) =>
+                  item.id ===
+                  removedItem.id
+              )
+            ) {
+              return currentItems;
+            }
+
+            const nextRestoredItems = [
+              ...currentItems,
+            ];
+
+            const restoreIndex =
+              Math.min(
+                removedItemIndex,
+                nextRestoredItems.length
+              );
+
+            nextRestoredItems.splice(
+              restoreIndex,
+              0,
+              removedItem
+            );
+
+            localStorage.setItem(
+              SHOPPING_LIST_STORAGE_KEY,
+              JSON.stringify(
+                nextRestoredItems
+              )
+            );
+
+            return nextRestoredItems;
+          }
+        );
+      },
+    },
+  });
+}
+
   const estimatedTotal =
     pendingItems.reduce(
       (total, item) =>
@@ -746,88 +891,34 @@ export default function ShoppingLists(
                               item.selectedProductId
                           );
 
-                        const itemTotal =
-                          (item.estimatedUnitPrice ??
-                            0) *
-                          item.quantity;
-
                         return (
-                          <button
+                          <ShoppingListItemRow
                             key={item.id}
-                            type="button"
-                            onClick={() =>
-                              handleShoppingItemClick(
-                                item
-                              )
+                            item={item}
+                            baseProduct={
+                              baseProduct
                             }
-                            className={`
-                              flex
-                              w-full
-                              items-center
-                              gap-4
-                              px-4
-                              py-4
-                              text-left
-                              transition-colors
-                              hover:bg-muted/50
-                              active:bg-muted
-                              ${
-                                index !==
-                                group.items.length -
-                                  1
-                                  ? "border-b border-border"
-                                  : ""
-                              }
-                            `}
-                          >
-                            <div
-                              className="
-                                flex
-                                h-6
-                                w-6
-                                shrink-0
-                                items-center
-                                justify-center
-                                rounded-full
-                                border-2
-                                border-muted-foreground/40
-                                transition-colors
-                              "
-                            />
-
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-card-foreground">
-                                {baseProduct?.name ??
-                                  item.customName ??
-                                  "Produto desconhecido"}
-                              </p>
-
-                              <p className="mt-1 truncate text-sm text-muted-foreground">
-                                {item.baseProductId !==
-                                undefined ? (
-                                  <>
-                                    {item.quantity} ×{" "}
-                                    {selectedProduct?.name ??
-                                      "Sem produto atribuído"}
-                                  </>
-                                ) : (
-                                  <>
-                                    {item.quantity} ×{" "}
-                                    Sem produto registado
-                                  </>
-                                )}
-                              </p>
-                            </div>
-
-                            <span className="shrink-0 text-sm font-semibold text-card-foreground">
-                              {item.estimatedUnitPrice !==
-                              undefined
-                                ? formatCurrency(
-                                    itemTotal
-                                  )
-                                : "—"}
-                            </span>
-                          </button>
+                            selectedProduct={
+                              selectedProduct
+                            }
+                            isLastItem={
+                              index ===
+                              group.items.length -
+                                1
+                            }
+                            onClick={
+                              handleShoppingItemClick
+                            }
+                            onComplete={
+                              handleCompleteItem
+                            }
+                            onQuantityClick={
+                              setQuantityItemId
+                            }
+                            onRemove={
+                              handleRemoveItem
+                            }
+                          />
                         );
                       }
                     )}
@@ -1042,6 +1133,35 @@ export default function ShoppingLists(
         }}
         onSelectStore={
           handleSelectStore
+        }
+      />
+
+      <ShoppingItemQuantitySheet
+        open={
+          quantityItem !== undefined
+        }
+        productName={
+          baseProducts.find(
+            (baseProduct) =>
+              baseProduct.id ===
+              quantityItem?.baseProductId
+          )?.name ??
+          quantityItem?.customName ??
+          ""
+        }
+        quantity={
+          quantityItem?.quantity ?? 1
+        }
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setQuantityItemId(null);
+          }
+        }}
+        onDecrease={
+          handleDecreaseQuantity
+        }
+        onIncrease={
+          handleIncreaseQuantity
         }
       />
 
