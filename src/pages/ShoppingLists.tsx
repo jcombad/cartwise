@@ -704,6 +704,13 @@ export default function ShoppingLists(
       0
     );
 
+  const hasItemsWithoutPrice =
+  pendingItems.some(
+    (item) =>
+      item.estimatedUnitPrice ===
+      undefined
+  );  
+
   const storeGroupsMap =
     new Map<number | null, StoreGroup>();
 
@@ -802,9 +809,13 @@ export default function ShoppingLists(
               </p>
 
               <p className="mt-1 text-3xl font-bold tracking-tight text-card-foreground">
-                {formatCurrency(
-                  estimatedTotal
-                )}
+                {hasItemsWithoutPrice
+  ? `≥ ${formatCurrency(
+      estimatedTotal
+    )}`
+  : formatCurrency(
+      estimatedTotal
+    )}
               </p>
             </div>
 
@@ -840,8 +851,15 @@ export default function ShoppingLists(
                     (item.estimatedUnitPrice ??
                       0) *
                       item.quantity,
-                  0
+                  0  
                 );
+
+              const hasItemsWithoutPrice =
+                group.items.some(
+                  (item) =>
+                  item.estimatedUnitPrice ===
+                    undefined
+                );  
 
               return (
                 <section
@@ -868,9 +886,13 @@ export default function ShoppingLists(
                     </div>
 
                     <span className="shrink-0 text-sm font-medium text-muted-foreground">
-                      {formatCurrency(
-                        groupTotal
-                      )}
+                      {hasItemsWithoutPrice
+  ? `≥ ${formatCurrency(
+      groupTotal
+    )}`
+  : formatCurrency(
+      groupTotal
+    )}
                     </span>
                   </div>
 
@@ -883,7 +905,7 @@ export default function ShoppingLists(
                               product.id ===
                               item.baseProductId
                           );
-
+                           
                         const selectedProduct =
                           products.find(
                             (product) =>
@@ -921,7 +943,7 @@ export default function ShoppingLists(
                           />
                         );
                       }
-                    )}
+                    )} 
                   </div>
                 </section>
               );
